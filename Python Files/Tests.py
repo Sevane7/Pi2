@@ -6,16 +6,12 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-analyst_name = "Julie"
+analyst_name = "Ton Prenom"
 
 ticker = "SPY"
 timeframe = "Daily"
 start = "2010-01-01"
 end = "2015-01-08"
-
-N_generation = 1000
-horizon = 3
-
 
 
 df = BloombergData(ticker, timeframe, start, end)
@@ -23,12 +19,3 @@ df = BloombergData(ticker, timeframe, start, end)
 hurst = HurstDistribution(df)
 
 backtest = BacktestStrategy(hurst, analyst_name)
-
-
-# print(backtest.original_data)
-# print('mean\n', backtest.mean_forecasted_data)
-
-# print(f"MSE : {backtest.hit_ratio}")
-# print(f"RMSE: {backtest.rmse}")
-
-# backtest.comparaison()

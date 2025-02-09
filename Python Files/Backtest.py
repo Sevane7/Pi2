@@ -6,7 +6,7 @@ from Forcasting import Forecast
 from Hurst import HurstDistribution
 from typing import Dict
 import os
-from Entropy import compute_display_entropy_indicator
+from Entropy import compute_entropy_indicator
 
 class BacktestStrategy:
 
@@ -42,7 +42,7 @@ class BacktestStrategy:
 
 
     def __str__(self):
-        return f"{self.hurstobj.ticker} - Hurst freq {self.hurst_fq} - Generations {self.generation} - Horizon {self.horizon}"
+        return f"{self.hurstobj.dataobj} - Hurst freq {self.hurst_fq} - Generations {self.generation} - Horizon {self.horizon}"
 
 
         
@@ -59,9 +59,9 @@ class BacktestStrategy:
             },
             "Julie": {
                 # "6M": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500}
-                "6M": {3: 1000},
-                "3Y": {1: 1000},
-                "5Y": {5: 2000}
+                "6M": {3: 1000, 5:2000}
+                # "3Y": {1: 1000},
+                # "5Y": {5: 2000}
             },
             "Sevane": {
                 "1Y": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500, 120: 6400, 200: 7300},
@@ -78,7 +78,7 @@ class BacktestStrategy:
 
         indexes = forecast.get_index_from_S0_to_Horizon()
 
-        return self.data.loc[indexes, "Price"]
+        return self.data.loc[indexes]
     
 
     # Running backtest
@@ -109,8 +109,12 @@ class BacktestStrategy:
                                     h)
                     
                     self.filling_data(forecast)
-
-                # self.hit_ratio = self.compute_Hit_Ratio()
+                
+                self.compute_mean_forecated_data()
+                
+                self.save()
+                
+                self.hit_ratio = self.compute_Hit_Ratio()
 
                 self.mse = self.compute_MSE()
 
@@ -123,8 +127,18 @@ class BacktestStrategy:
         self.original_data = pd.concat([self.original_data, self.get_compare_data(forecast)], axis=0)
         
         self.forecasted_data = pd.concat([self.forecasted_data,forecast.paths], axis=0)
+    
+    def compute_mean_forecated_data(self):
 
         self.mean_forecasted_data = pd.DataFrame(self.forecasted_data.mean(axis=1), columns=["Price"])
+
+        self.mean_forecasted_data["Log Return"] = np.log(self.mean_forecasted_data["Price"] / self.mean_forecasted_data["Price"].shift())
+        
+        # self.mean_forecasted_data["Log Return"].loc[self.mean_forecasted_data["Log Return"].reset_index().index % self.horizon == 0] = np.nan
+
+        compute_entropy_indicator(self.mean_forecasted_data, 5, 2)
+
+
 
 
 
@@ -133,9 +147,9 @@ class BacktestStrategy:
 
         dates_SO = self.H_distrib.keys()
         
-        y_true = self.original_data.drop(dates_SO)
+        y_true = self.original_data.loc[:, "Price"].drop(dates_SO)
 
-        y_pred = self.mean_forecasted_data.drop(dates_SO)
+        y_pred = self.mean_forecasted_data.loc[:, "Price"].drop(dates_SO)
 
         # plt.plot(y_true, label="original data", c="blue")
         # plt.plot(y_pred, label ="forcast", c="red")
@@ -146,29 +160,25 @@ class BacktestStrategy:
         return mean_squared_error(y_true, y_pred)
     
     def compute_Hit_Ratio(self):
-
         dates_SO = self.H_distrib.keys()
-        
+    
         real_values = self.original_data.drop(dates_SO)
+        forecast_values = self.mean_forecasted_data.drop(dates_SO)  
         
         if len(real_values) < self.horizon:
             print(f"Données réelles incomplètes pour comparaison. Comparaison sur {len(real_values)} jours seulement.")
 
-        #Vérification directionnelle (hausse/baisse correcte)
-        real_direction = np.sign(np.diff(real_values))  
-        forecast_direction = np.sign(np.diff(self.forecasted_data[:self.horizon]))  
+        real_direction = np.sign(np.diff(real_values.to_numpy().flatten()))  
+        forecast_direction = np.sign(np.diff(forecast_values.to_numpy().flatten()))  
 
-        hit_rate = (real_direction == forecast_direction).mean()  
+        min_len = min(len(real_direction), len(forecast_direction))
+        real_direction = real_direction[:min_len]
+        forecast_direction = forecast_direction[:min_len]
 
-        #RMSE
-        rmse = np.sqrt(mean_squared_error(real_values[:self.horizon], 
-                                        self.forecasted_data[:self.horizon]))
+        hit_rate = (real_direction == forecast_direction).mean()
 
-        # print(f"Ticker : {self.ticker}")
-        # print(f"Taux de réussite directionnel : {hit_rate * 100:.2f}%")
-        # print(f"Erreur RMSE : {rmse:.4f}")
+        return hit_rate
 
-        return hit_rate, rmse
 
     def save_metrics(self, forcast : Forecast):
 
@@ -180,8 +190,10 @@ class BacktestStrategy:
         file_path = os.path.join(dir_path, f"{self.hurstobj.ticker}.xlsx")
 
         new_data = pd.DataFrame({
-            "Forcast" : [forcast],
-            # "Hit Ratio" : [self.hit_ratio],
+            "Forcast" : [self],
+            "From" : [self.hurstobj.dataobj.start],
+            "To" : [self.hurstobj.dataobj.end],
+            "Hit Ratio" : [self.hit_ratio],
             "MSE" : [self.mse]
         })
 
@@ -216,41 +228,23 @@ class BacktestStrategy:
         plt.show()
 
     def save(self):
-        # Entropy
-        entropy_order = 2 # L
-        entropy_window = 5
 
-        original_data = self.original_data
-        forecasted_data = self.mean_forecasted_data
+        dirpath = f"Data\\Forecasting\\{self.hurst_fq}"
 
-        self.comparaison()
+        os.makedirs(dirpath, exist_ok=True)
 
 
-        # Compute returns
-        original_returns = original_data.pct_change().dropna()
-        forecasted_returns = forecasted_data.pct_change().dropna()
+        file_path = os.path.join(dirpath, f"{self}.xlsx")
 
-        original_returns.columns = ['Returns']
-        forecasted_returns.columns = ['Returns']
+        # self.mean_forecasted_data.to_excel(file_path, sheet_name="Forcast", index=True)
+        # self.original_data.to_excel(file_path, sheet_name='Original', index=True)
 
+        # final_orignal = pd.concat([original_data, original_returns], axis=1)
+        # final_forecasted = pd.concat([forecasted_data, forecasted_returns], axis=1)
+        # final_orignal = final_orignal[['Price', 'Returns', 'Efficiency_Indicator']]
+        # final_forecasted = final_forecasted[['Price', 'Returns', 'Efficiency_Indicator']]
 
-        # Compute entropy indicator
-        compute_display_entropy_indicator(original_data, forecasted_data, entropy_window, entropy_order)
-
-        path = f"Data\\Final Data\\{self.hurstobj.dataobj.timeframe}\\{self.horizon} Days\\Final_data from {self.hurstobj.dataobj.start} 
-        to {self.hurstobj.dataobj.end} with horizon {self.horizon}, entropy order {entropy_order}, entropy window {entropy_window} .xlsx"
-
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-
-        final_orignal = pd.concat([original_data, original_returns], axis=1)
-        final_forecasted = pd.concat([forecasted_data, forecasted_returns], axis=1)
-        final_orignal = final_orignal[['Price', 'Returns', 'Efficiency_Indicator']]
-        final_forecasted = final_forecasted[['Price', 'Returns', 'Efficiency_Indicator']]
-
-        print(final_orignal)    
-        print(final_forecasted)
-
-        # Variante 1 de l'écriture (2 feuilles dans meme fichier)
-        with pd.ExcelWriter(path) as writer:
-            final_orignal.to_excel(writer, sheet_name='Original')
-            final_forecasted.to_excel(writer, sheet_name='Forecast')
+        # # Variante 1 de l'écriture (2 feuilles dans meme fichier)
+        with pd.ExcelWriter(file_path) as writer:
+            self.original_data[["Price", "Log Return", "Efficiency Indicator"]].to_excel(writer, sheet_name='Original', index=True)
+            self.mean_forecasted_data.to_excel(writer, sheet_name='Forecast', index=True)

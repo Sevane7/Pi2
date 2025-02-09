@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from Entropy import compute_entropy_indicator
 
 class BloombergData:
 
@@ -27,7 +28,9 @@ class BloombergData:
 
         df = df.rename(columns={self.ticker : "Price"})
 
-        df[f"Log Return"] = np.log(df["Price"]/df["Price"].shift())
+        df["Log Return"] = np.log(df["Price"]/df["Price"].shift())
+
+        compute_entropy_indicator(df, 5, 2)
 
         #df[f"{ticker} Cumprod"] = (1 + df[f"{ticker} Log Return"]).cumprod() - 1
 
@@ -67,10 +70,10 @@ class BloombergData:
 
     def __str__(self):
 
-        start_format = pd.to_datetime(str(self.start)).strftime("%A %d %B")
-        end_format = pd.to_datetime(str(self.end)).strftime("%A %d %B")
+        start_format = pd.to_datetime(str(self.start)).strftime("%d-%m-%Y")
+        end_format = pd.to_datetime(str(self.end)).strftime("%d-%m-%Y")
     
-        return f"{self.ticker} From {start_format} To {end_format}."
+        return f"{self.ticker} - {start_format} To {end_format}"
 
     def __len__(self):
         return len(self.original_data)

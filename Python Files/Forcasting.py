@@ -36,7 +36,7 @@ class Forecast:
         self.horizon = horizon + 1
         self.generation = generation
         self.indexes = self.get_index_from_S0_to_Horizon()
-        self.paths = pd.DataFrame(index=self.indexes)
+        self.paths = pd.DataFrame(columns=["Price"], index=self.indexes)
         # self.forcasting()
 
 
@@ -145,16 +145,16 @@ class Forecast:
 
             path = self.generate_fbm_cholesky()
 
-            self.paths[i] = self.fbm_to_price(path)
+            self.paths["Price"] = self.fbm_to_price(path)
             
-        self.savePath(h_freq)
+        # self.savePath(h_freq)
 
         # self.paths.to_parquet(f"\Data\Forecasting\{self.__str__()}.parquet")
 
 
     # Data methods 
     def savePath(self, h_freq : str):
-        """Enregistre le forcast au format csv.
+        """Enregistre le forecast au format csv.
 
         Args:
             h_freq (str): Fréquence de Hurst pour ce forcast.

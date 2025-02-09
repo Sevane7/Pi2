@@ -2,9 +2,10 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-def test_stats_article2(data, L):
+
+def test_stats_article2(data : pd.DataFrame, L : int):
     if L >= data.shape[0]:
-        print('L is greater than the size of the time series')
+        # print('L is greater than the size of the time series')
         return [3.0, pd.DataFrame()]
 
     symbolize_price_returns = data['Price'].pct_change().dropna().apply(lambda x: 1 if x > 0 else 0)
@@ -61,19 +62,21 @@ def test_stats_article2(data, L):
 
     return [Estimate_Efficiency_Indicator, df]
 
-def reshape_data(data, window_size):
+def reshape_data(data : pd.DataFrame, window_size : int):
+
     res = data.copy()
-    print("Dataset size :", data.shape[0])
+    # print("Dataset size :", data.shape[0])
+
     # We delete the first row of data for the size of our dataset to be a multiple of the window size 
     while(res.shape[0] % window_size != 0):
         res.drop(res.head(1).index,inplace=True)
 
-    print("Dataset size after reshaping :", res.shape[0])
-    print(f"Number of windows of size {window_size} : ", res.shape[0] / window_size)
+    # print("Dataset size after reshaping :", res.shape[0])
+    # print(f"Number of windows of size {window_size} : ", res.shape[0] / window_size)
 
     return res
 
-def compute_efficiency_indicator(data, window_size, L):
+def compute_efficiency_indicator(data : pd.DataFrame, window_size, L):
     total_size = data.shape[0]
 
     # Stocker l'index original pour vérifier la longueur finale
@@ -86,12 +89,14 @@ def compute_efficiency_indicator(data, window_size, L):
         efficiency_indicators.append(indicator)
 
     # Ajouter la colonne directement au DataFrame original
-    data.loc[:, 'Efficiency_Indicator'] = efficiency_indicators  # Utiliser loc pour éviter les copies
+    data['Efficiency Indicator'] = efficiency_indicators  # Utiliser loc pour éviter les copies
 
 
 
-def display_Indicator(original, forecast, window_size):
-    plt.figure(figsize=(8, 6))
+def display_Indicator(original : pd.DataFrame, forecast : pd.DataFrame, window_size : int):
+    
+    plt.figure(figsize=(12, 6))
+    
     plt.plot(original['Efficiency_Indicator'][window_size:], label="Efficiency Indicator for Original Data")
     plt.plot(forecast['Efficiency_Indicator'][window_size:], label="Efficiency_Indicator for Forecasted Data")
 
@@ -99,17 +104,15 @@ def display_Indicator(original, forecast, window_size):
     plt.xlabel("Time")
     plt.ylabel("Efficiency_Indicator")
     plt.legend()
-    plt.grid()
+    plt.grid(True)
+
     plt.show()
 
-def compute_display_entropy_indicator(original, forecast, window_size, L):
-    reshape_original = reshape_data(original, window_size)
-    reshape_forecast = reshape_data(forecast, window_size)
 
-    compute_efficiency_indicator(reshape_original, window_size, L)
-    compute_efficiency_indicator(reshape_forecast, window_size, L)
+def compute_entropy_indicator(df : pd.DataFrame, window_size, L):
 
-    display_Indicator(reshape_original, reshape_forecast, window_size)
+    reshape_df = reshape_data(df, window_size)
 
-    original['Efficiency_Indicator'] = reshape_original['Efficiency_Indicator'].reindex(original.index)
-    forecast['Efficiency_Indicator'] = reshape_forecast['Efficiency_Indicator'].reindex(original.index)
+    compute_efficiency_indicator(reshape_df, window_size, L)
+
+    df['Efficiency Indicator'] = reshape_df['Efficiency Indicator'].reindex(df.index)
