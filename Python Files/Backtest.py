@@ -6,6 +6,7 @@ from Forcasting import Forecast
 from Hurst import HurstDistribution
 from typing import Dict
 import os
+from Entropy import compute_display_entropy_indicator
 
 class BacktestStrategy:
 
@@ -123,7 +124,7 @@ class BacktestStrategy:
         
         self.forecasted_data = pd.concat([self.forecasted_data,forecast.paths], axis=0)
 
-        self.mean_forecasted_data = self.forecasted_data.mean(axis=1)
+        self.mean_forecasted_data = pd.DataFrame(self.forecasted_data.mean(axis=1), columns=["Price"])
 
 
 
@@ -213,3 +214,43 @@ class BacktestStrategy:
 
         plt.grid(True, alpha = 0.7)
         plt.show()
+
+    def save(self):
+        # Entropy
+        entropy_order = 2 # L
+        entropy_window = 5
+
+        original_data = self.original_data
+        forecasted_data = self.mean_forecasted_data
+
+        self.comparaison()
+
+
+        # Compute returns
+        original_returns = original_data.pct_change().dropna()
+        forecasted_returns = forecasted_data.pct_change().dropna()
+
+        original_returns.columns = ['Returns']
+        forecasted_returns.columns = ['Returns']
+
+
+        # Compute entropy indicator
+        compute_display_entropy_indicator(original_data, forecasted_data, entropy_window, entropy_order)
+
+        path = f"Data\\Final Data\\{self.hurstobj.dataobj.timeframe}\\{self.horizon} Days\\Final_data from {self.hurstobj.dataobj.start} 
+        to {self.hurstobj.dataobj.end} with horizon {self.horizon}, entropy order {entropy_order}, entropy window {entropy_window} .xlsx"
+
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
+        final_orignal = pd.concat([original_data, original_returns], axis=1)
+        final_forecasted = pd.concat([forecasted_data, forecasted_returns], axis=1)
+        final_orignal = final_orignal[['Price', 'Returns', 'Efficiency_Indicator']]
+        final_forecasted = final_forecasted[['Price', 'Returns', 'Efficiency_Indicator']]
+
+        print(final_orignal)    
+        print(final_forecasted)
+
+        # Variante 1 de l'écriture (2 feuilles dans meme fichier)
+        with pd.ExcelWriter(path) as writer:
+            final_orignal.to_excel(writer, sheet_name='Original')
+            final_forecasted.to_excel(writer, sheet_name='Forecast')
