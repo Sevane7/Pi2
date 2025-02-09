@@ -4,65 +4,50 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import r2_score, mean_squared_error
 from Forcasting import Forecast
 from Hurst import HurstDistribution
+from typing import Dict
+import os
 
 class BacktestStrategy:
 
     def __init__(self,
                  hurstobj : HurstDistribution,
-                 hurst_fq : str,
-                 generation : int,
-                 horizon : int
+                 analyst_name : str,
                  ):
         
-        # Data
-        self.data : pd.DataFrame = hurstobj.data
-        # self.initial_path = self.get_compare_data()
+        # First attributs
+        self.hurstobj : HurstDistribution = hurstobj
+        self.data : pd.DataFrame = hurstobj.data        
+        self.combi_generations = self.get_analyst_combinations(analyst_name)
 
         # Hurst
-        self.hurstobj : HurstDistribution = hurstobj
-        self.hurst_fq : str = hurst_fq
-        self.H_distrib : pd.Series = self.hurstobj.get_changes_Hurst(self.hurst_fq).dropna()
+        self.hurst_fq : str
+        self.H_distrib : pd.Series
 
         # Forcast
-        self.generation : int = generation
-        self.horizon : int = horizon
-        # self.forecasted_path = self.meanPath(str(self.forcaster))
+        self.generation : int
+        self.horizon : int
 
-        #self.forecast = None
+        # Forcast Data
         self.original_data = pd.DataFrame()
         self.forecasted_data = pd.DataFrame()
         self.mean_forecasted_data = pd.DataFrame()
 
-        # Others
+        # Metrics
         self.hit_ratio : float
         self.mse : float
 
+        # Running Backtest
+        self.backtest()
+
+
+    def __str__(self):
+        return f"{self.hurstobj.ticker} - Hurst freq {self.hurst_fq} - Generations {self.generation} - Horizon {self.horizon}"
+
+
         
-
-    def backtest(self):
-
-        for date, h in self.H_distrib.items():
-
-            forecast = Forecast(self.hurstobj,
-                               self.hurst_fq,
-                               date,
-                               self.generation,
-                               self.horizon,
-                               h)
-                        
-            forecast.forcasting(self.hurst_fq)
-
-            self.original_data = pd.concat([self.original_data, self.get_compare_data(forecast)], axis=0)
-            
-            self.forecasted_data = pd.concat([self.forecasted_data,forecast.paths], axis=0)
-
-            self.mean_forecasted_data = self.forecasted_data.mean(axis=1)
-
-        self.mse = self.compute_Hit_ratio()
-
-
-    def analyst_generations(self, forcast_analyst : str) -> dict : 
-        data = {
+    # Get methods 
+    def get_analyst_combinations(self, analyst_name : str) -> dict[str, dict[int, int]] : 
+        data : dict[str, dict[int, int]] = {
             "Ghali": {
                 "1M": {1: 1000, 3: 1000, 5: 2000, 7: 3000, 10: 3000, 20: 5000},
                 "5Y": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500, 120: 6400, 200: 7300, 300: 8200, 400: 9100, 500: 10000, 650: 10900, 900: 20000}
@@ -72,7 +57,10 @@ class BacktestStrategy:
                 "3M": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000}
             },
             "Julie": {
-                "6M": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500}
+                # "6M": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500}
+                "6M": {3: 1000},
+                "3Y": {1: 1000},
+                "5Y": {5: 2000}
             },
             "Sevane": {
                 "1Y": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500, 120: 6400, 200: 7300},
@@ -83,9 +71,7 @@ class BacktestStrategy:
             }
         }
 
-        return data[forcast_analyst]
-
-
+        return data[analyst_name]
 
     def get_compare_data(self, forecast : Forecast) -> pd.DataFrame:
 
@@ -93,17 +79,56 @@ class BacktestStrategy:
 
         return self.data.loc[indexes, "Price"]
     
-    def meanPath(path : str):
 
-        forcasted_path = pd.read_csv(path, index_col=0)
-        print(forcasted_path)
+    # Running backtest
+    def backtest(self):
+        """Forcast pour toute la période donnée.  
+        Initialise les attributs hurst_fq, horizon, generation, et les data (originale, forcast, mean_forcast).  
+        """
 
-        forcasted_path.index = pd.to_datetime(forcasted_path.index)
+        for h_freq, horizon_gene in self.combi_generations.items():
 
-        return forcasted_path.mean(axis=0)
-    
+            self.hurst_fq = h_freq
 
-    def compute_Hit_ratio(self):
+            for horiz, gene in horizon_gene.items():
+
+                self.horizon = horiz
+
+                self.generation = gene
+                
+                self.H_distrib = self.hurstobj.get_changes_Hurst(self.hurst_fq).dropna()
+
+                for date, h in self.H_distrib.items():
+
+                    forecast = Forecast(self.hurstobj,
+                                    self.hurst_fq,
+                                    date,
+                                    self.generation,
+                                    self.horizon,
+                                    h)
+                    
+                    self.filling_data(forecast)
+
+                # self.hit_ratio = self.compute_Hit_Ratio()
+
+                self.mse = self.compute_MSE()
+
+                self.save_metrics(forecast)
+
+    def filling_data(self, forecast : Forecast) -> None:
+
+        forecast.forcasting(self.hurst_fq)
+
+        self.original_data = pd.concat([self.original_data, self.get_compare_data(forecast)], axis=0)
+        
+        self.forecasted_data = pd.concat([self.forecasted_data,forecast.paths], axis=0)
+
+        self.mean_forecasted_data = self.forecasted_data.mean(axis=1)
+
+
+
+    # Metrics methods
+    def compute_MSE(self):
 
         dates_SO = self.H_distrib.keys()
         
@@ -111,16 +136,15 @@ class BacktestStrategy:
 
         y_pred = self.mean_forecasted_data.drop(dates_SO)
 
-        plt.plot(y_true, label="original data", c="blue")
-        plt.plot(y_pred, label ="forcast", c="red")
-        plt.grid(True)
-        plt.legend()
-        plt.show()
+        # plt.plot(y_true, label="original data", c="blue")
+        # plt.plot(y_pred, label ="forcast", c="red")
+        # plt.grid(True)
+        # plt.legend()
+        # plt.show()
 
         return mean_squared_error(y_true, y_pred)
     
-
-    def hit_function(self):
+    def compute_Hit_Ratio(self):
 
         dates_SO = self.H_distrib.keys()
         
@@ -145,13 +169,41 @@ class BacktestStrategy:
 
         return hit_rate, rmse
 
+    def save_metrics(self, forcast : Forecast):
 
-    def comparaison(self):
+        # Verifier si dossier et fichier existent    
+        dir_path = f"Data\\Forecasting\\Metrics\\{self.hurstobj.dataobj.timeframe}"
+
+        os.makedirs(dir_path, exist_ok=True)
         
-        plt.scatter(self.original_data.index, self.original_data, c='red', label='original_data', marker='o', s=10, alpha=0.7 )
-        plt.scatter(self.mean_forecasted_data.index, self.mean_forecasted_data, c='blue', label='mean_forecasted_data', marker='s', s=10, alpha=0.7 )
-        #plt.plot(self.original_data, c='red', label='original_data')
-        #plt.plot(self.mean_forecasted_data, c='blue', label='mean_forecasted_data')
+        file_path = os.path.join(dir_path, f"{self.hurstobj.ticker}.xlsx")
+
+        new_data = pd.DataFrame({
+            "Forcast" : [forcast],
+            # "Hit Ratio" : [self.hit_ratio],
+            "MSE" : [self.mse]
+        })
+
+        if os.path.exists(file_path):
+            df = pd.read_excel(file_path)
+            df = pd.concat([df, new_data], ignore_index=True)
+        
+        else:
+            df = new_data
+
+        df.to_excel(file_path, index=False)
+
+
+    # Plotting methods
+    def plot_original_VS_forcast(self, scatter = True):
+        
+        if scatter: 
+            plt.scatter(self.original_data.index, self.original_data, c='red', label='original_data', marker='o', s=10, alpha=0.7)
+            plt.scatter(self.mean_forecasted_data.index, self.mean_forecasted_data, c='blue', label='mean_forecasted_data', marker='s', s=10, alpha=0.7)
+        
+        else:
+            plt.plot(self.original_data, c='red', label='original_data', alpha=0.7)
+            plt.plot(self.mean_forecasted_data, c='blue', label='mean_forecasted_data', alpha=0.7)
         
         plt.title('Comparaison data réel et forecasted')
         plt.xlabel("Date")

@@ -40,6 +40,15 @@ class Forecast:
         # self.forcasting()
 
 
+    def __str__(self):
+        
+        start_format = pd.to_datetime(self.start).strftime("%A %d %B %Y")
+        end_format = pd.to_datetime(str(self.indexes[-1])).strftime("%A %d %B %Y")
+
+        return f"{self.ticker} From {start_format} To {end_format} - Generations {self.generation} - Horizon {self.horizon - 1}"
+
+
+    # Get methods 
     def get_Hurst(self, hurstDistrib : HurstDistribution):
         return hurstDistrib.get_current_Hurst(self.S0_index, self.hurst_fq)
 
@@ -54,7 +63,20 @@ class Forecast:
     def get_vol(self):
         return np.std(self.data["Log Return"]) * np.float_power(252, self.H)
 
+    def get_index_from_S0_to_Horizon(self) -> list:
 
+        df_after_s0 =  self.data.loc[self.S0_index:]
+
+        max_len = len(df_after_s0)
+
+        self.horizon = min(max_len, self.horizon)
+
+        indexes = df_after_s0.iloc[:self.horizon].index.to_list()
+        
+        return indexes
+
+
+    # Forcasting methods 
     def generate_fbm_cholesky(self, epsilon = 1e-10) -> np.ndarray :
         """Generate a fractionnal Brownian Motion with cholesky method.
 
@@ -107,8 +129,7 @@ class Forecast:
         S0        : desired initial price
         alpha     : volatility scale (or intensity of variations)
         """
-        return self.S0 * np.exp(self.vol * (path - path[0]))
-        
+        return self.S0 * np.exp(self.vol * (path - path[0]))   
 
     def forcasting(self, h_freq : str):
         """Pour l'horizon donné avec le nombre de génération.  
@@ -130,37 +151,8 @@ class Forecast:
 
         # self.paths.to_parquet(f"\Data\Forecasting\{self.__str__()}.parquet")
 
-        
 
-    def get_index_from_S0_to_Horizon(self) -> list:
-
-        df_after_s0 =  self.data.loc[self.S0_index:]
-
-        max_len = len(df_after_s0)
-
-        self.horizon = min(max_len, self.horizon)
-
-        indexes = df_after_s0.iloc[:self.horizon].index.to_list()
-        
-        return indexes
-    
-
-    def plot_forcast(self, df : pd.DataFrame):
-
-        plt.figure(figsize=(13,7))
-
-        for c in df.columns:
-            plt.plot(df[c], c=np.random.rand(3,))
-        
-        plt.title(self)
-        plt.xlabel("Date")
-        plt.ylabel("Price")
-
-        plt.grid(True, alpha = 0.7)
-        plt.show()
-
-
-
+    # Data methods 
     def savePath(self, h_freq : str):
         """Enregistre le forcast au format csv.
 
@@ -168,7 +160,7 @@ class Forecast:
             h_freq (str): Fréquence de Hurst pour ce forcast.
         """
         
-        dir_path = f"Data\\Forecasting\\{h_freq}\\{self.horizon} Days"
+        dir_path = f"Data\\Forecasting\\{h_freq}"
         path_file = os.path.join(dir_path, f"{self}.csv")
 
         os.makedirs(dir_path, exist_ok=True)
@@ -193,24 +185,17 @@ class Forecast:
 
         return df
 
+    # Plot methods
+    def plot_forcast(self, df : pd.DataFrame):
 
+        plt.figure(figsize=(13,7))
 
-    def save_forecast(self):
-        """Sauvegarde self.paths au format json.
-        """
-
-
-        def convertir_ndarray(obj):
-            if isinstance(obj, np.ndarray):
-                return obj.tolist()
-            raise TypeError("Type non sérialisable")
-
-        with open(f"\Data\Forecasting\{self.__str__}.json", "w") as file:
-            json.dump(self.paths, file, indent=4, default=convertir_ndarray)
-
-    def __str__(self):
+        for c in df.columns:
+            plt.plot(df[c], c=np.random.rand(3,))
         
-        start_format = pd.to_datetime(self.start).strftime("%A %d %B %Y")
-        end_format = pd.to_datetime(str(self.indexes[-1])).strftime("%A %d %B %Y")
+        plt.title(self)
+        plt.xlabel("Date")
+        plt.ylabel("Price")
 
-        return f"{self.ticker} From {start_format} To {end_format} - Generations {self.generation} - Horizon {self.horizon - 1}"
+        plt.grid(True, alpha = 0.7)
+        plt.show()
