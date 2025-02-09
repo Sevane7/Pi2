@@ -100,3 +100,4 @@ class HurstDistribution:
         plt.grid(True, alpha=0.7)  
         
         plt.show() 
+print("hrhrgfgfg")
