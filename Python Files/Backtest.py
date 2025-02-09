@@ -35,6 +35,7 @@ class BacktestStrategy:
 
         # Others
         self.hit_ratio : float
+        self.mse : float
 
         
 
@@ -48,9 +49,7 @@ class BacktestStrategy:
                                self.generation,
                                self.horizon,
                                h)
-            
-            #self.forecast = forecast
-            
+                        
             forecast.forcasting(self.hurst_fq)
 
             self.original_data = pd.concat([self.original_data, self.get_compare_data(forecast)], axis=0)
@@ -59,8 +58,32 @@ class BacktestStrategy:
 
             self.mean_forecasted_data = self.forecasted_data.mean(axis=1)
 
-        self.hit_ratio = self.compute_Hit_ratio()
+        self.mse = self.compute_Hit_ratio()
 
+
+    def analyst_generations(self, forcast_analyst : str) -> dict : 
+        data = {
+            "Ghali": {
+                "1M": {1: 1000, 3: 1000, 5: 2000, 7: 3000, 10: 3000, 20: 5000},
+                "5Y": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500, 120: 6400, 200: 7300, 300: 8200, 400: 9100, 500: 10000, 650: 10900, 900: 20000}
+            },
+            "Jules": {
+                "2W": {1: 1000, 3: 1000, 5: 2000, 7: 3000, 10: 3000},
+                "3M": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000}
+            },
+            "Julie": {
+                "6M": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500}
+            },
+            "Sevane": {
+                "1Y": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500, 120: 6400, 200: 7300},
+                "3Y": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500, 120: 6400, 200: 7300, 300: 8200, 400: 9100, 500: 10000}
+            },
+            "Tommy": {
+                "1W": {1: 1000, 3: 1000, 5: 2000}
+            }
+        }
+
+        return data[forcast_analyst]
 
 
 
@@ -94,9 +117,35 @@ class BacktestStrategy:
         plt.legend()
         plt.show()
 
-
         return mean_squared_error(y_true, y_pred)
     
+
+    def hit_function(self):
+
+        dates_SO = self.H_distrib.keys()
+        
+        real_values = self.original_data.drop(dates_SO)
+        
+        if len(real_values) < self.horizon:
+            print(f"Données réelles incomplètes pour comparaison. Comparaison sur {len(real_values)} jours seulement.")
+
+        #Vérification directionnelle (hausse/baisse correcte)
+        real_direction = np.sign(np.diff(real_values))  
+        forecast_direction = np.sign(np.diff(self.forecasted_data[:self.horizon]))  
+
+        hit_rate = (real_direction == forecast_direction).mean()  
+
+        #RMSE
+        rmse = np.sqrt(mean_squared_error(real_values[:self.horizon], 
+                                        self.forecasted_data[:self.horizon]))
+
+        # print(f"Ticker : {self.ticker}")
+        # print(f"Taux de réussite directionnel : {hit_rate * 100:.2f}%")
+        # print(f"Erreur RMSE : {rmse:.4f}")
+
+        return hit_rate, rmse
+
+
     def comparaison(self):
         
         plt.scatter(self.original_data.index, self.original_data, c='red', label='original_data', marker='o', s=10, alpha=0.7 )

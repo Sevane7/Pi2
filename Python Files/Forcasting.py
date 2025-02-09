@@ -213,4 +213,4 @@ class Forecast:
         start_format = pd.to_datetime(self.start).strftime("%A %d %B %Y")
         end_format = pd.to_datetime(str(self.indexes[-1])).strftime("%A %d %B %Y")
 
-        return f"{self.ticker} From {start_format} To {end_format} - Generations {self.generation} - Horizon {self.horizon}"
+        return f"{self.ticker} From {start_format} To {end_format} - Generations {self.generation} - Horizon {self.horizon - 1}"
