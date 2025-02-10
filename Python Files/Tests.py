@@ -16,7 +16,6 @@ def run_tests(analyst_name = analyst_name):
     start = "2010-01-01"
     end = "2015-01-08"
 
-
     df = BloombergData(ticker, timeframe, start, end)
 
     hurst = HurstDistribution(df)
@@ -59,6 +58,6 @@ def test_backtest_parameters(start_dates = ["2010-01-01"],
                         print(f"Erreur avec start={start}, end={end}, N_generation={N_generation}, horizon={horizon}:\n {e}")
 
 
-test_backtest_parameters()
+# test_backtest_parameters()
 
-# run_tests()
+run_tests()

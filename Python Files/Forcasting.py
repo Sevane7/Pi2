@@ -37,7 +37,6 @@ class Forecast:
         self.generation = generation
         self.indexes = self.get_index_from_S0_to_Horizon()
         self.paths = pd.DataFrame(index=self.indexes)
-        # self.forcasting()
 
 
     def __str__(self):
@@ -147,10 +146,27 @@ class Forecast:
 
             self.paths[i] = self.fbm_to_price(path)
             
-        # self.savePath(h_freq)
+    def estimate_future_value(self, Y: np.ndarray, Sigma_Y: np.ndarray, Sigma_XY: np.ndarray):
 
-        # self.paths.to_parquet(f"\Data\Forecasting\{self.__str__()}.parquet")
+        if np.linalg.det(Sigma_Y) != 0:  
+            X_t_h_Y = Sigma_XY @ np.linalg.inv(Sigma_Y) @ Y
+        else:
+            print("Avertissement : Sigma_Y non inversible, estimation impossible.")
+            X_t_h_Y = None
 
+        return X_t_h_Y
+    
+    def predict_future(self, original_data : pd.DataFrame, mean_forecasted_data : pd.DataFrame):
+
+        Xt = original_data["Price"].to_numpy()
+
+        Y = Xt.T
+
+        Sigma_Y = np.cov(Y)  
+
+        Sigma_XY = np.cov(mean_forecasted_data.T, Y.T)[:-1, -1]  
+
+        return self.estimate_future_value(Y, Sigma_Y, Sigma_XY)
 
     # Data methods 
     def savePath(self, h_freq : str):
@@ -179,9 +195,9 @@ class Forecast:
             pd.DataFrame: forcast
         """
 
-        df = pd.read_csv(file_path, index_col=0, parse_dates=True)
+        df = pd.read_excel(file_path, index_col=0, parse_dates=True)
 
-        df.rename(columns={'Unnamed: 0': 'Date'}, inplace=True)
+        # df.rename(columns={'Unnamed: 0': 'Date'}, inplace=True)
 
         return df
 

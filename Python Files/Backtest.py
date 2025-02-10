@@ -7,6 +7,7 @@ from Hurst import HurstDistribution
 from typing import Dict
 import os
 from Entropy import compute_entropy_indicator
+from datetime import datetime
 
 class BacktestStrategy:
 
@@ -63,7 +64,7 @@ class BacktestStrategy:
                 "6M": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500}
             },
             "Sevane": {
-                #"1Y": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500, 120: 6400, 200: 7300},
+                "1Y": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500, 120: 6400, 200: 7300},
                 "3Y": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500, 120: 6400, 200: 7300, 300: 8200, 400: 9100, 500: 10000}
             },
             "Tommy": {
@@ -98,6 +99,7 @@ class BacktestStrategy:
                 
                 self.H_distrib = self.hurstobj.get_changes_Hurst(self.hurst_fq).dropna()
 
+                print(datetime.now().strftime("%H:%M:%S"))
                 print(f"Running {self}")
                 
                 for date, h in self.H_distrib.items():
@@ -113,13 +115,13 @@ class BacktestStrategy:
                                
                 self.compute_mean_forecated_data()
                 
-                # self.save()
+                self.save()
                 
-                # self.hit_ratio = self.compute_Hit_Ratio()
+                self.hit_ratio = self.compute_Hit_Ratio()
 
-                # self.mse = self.compute_MSE()
+                self.mse = self.compute_MSE()
 
-                # self.save_metrics(forecast)
+                self.save_metrics(forecast)
 
     def simple_backtest(self, h_fq, N_generations, horizons):
         
@@ -206,7 +208,6 @@ class BacktestStrategy:
         hit_rate = (real_direction == forecast_direction).mean()
 
         return hit_rate
-
 
     def save_metrics(self, forcast : Forecast):
 
