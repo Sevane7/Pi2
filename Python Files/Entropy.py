@@ -115,4 +115,6 @@ def compute_entropy_indicator(df : pd.DataFrame, window_size, L):
 
     compute_efficiency_indicator(reshape_df, window_size, L)
 
+    # print(set(df.index).symmetric_difference(set(reshape_df.index)))
+
     df['Efficiency Indicator'] = reshape_df['Efficiency Indicator'].reindex(df.index)

@@ -13,6 +13,7 @@ class BacktestStrategy:
     def __init__(self,
                  hurstobj : HurstDistribution,
                  analyst_name : str,
+                 simple_backtest : bool
                  ):
         
         # First attributs
@@ -38,7 +39,8 @@ class BacktestStrategy:
         self.mse : float
 
         # Running Backtest
-        self.backtest()
+        if simple_backtest == False:
+            self.backtest()
 
 
     def __str__(self):
@@ -61,7 +63,7 @@ class BacktestStrategy:
                 "6M": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500}
             },
             "Sevane": {
-                "1Y": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500, 120: 6400, 200: 7300},
+                #"1Y": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500, 120: 6400, 200: 7300},
                 "3Y": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500, 120: 6400, 200: 7300, 300: 8200, 400: 9100, 500: 10000}
             },
             "Tommy": {
@@ -96,6 +98,8 @@ class BacktestStrategy:
                 
                 self.H_distrib = self.hurstobj.get_changes_Hurst(self.hurst_fq).dropna()
 
+                print(f"Running {self}")
+                
                 for date, h in self.H_distrib.items():
 
                     forecast = Forecast(self.hurstobj,
@@ -106,16 +110,43 @@ class BacktestStrategy:
                                     h)
                     
                     self.filling_data(forecast)
-                
+                               
                 self.compute_mean_forecated_data()
                 
-                self.save()
+                # self.save()
                 
-                self.hit_ratio = self.compute_Hit_Ratio()
+                # self.hit_ratio = self.compute_Hit_Ratio()
 
-                self.mse = self.compute_MSE()
+                # self.mse = self.compute_MSE()
 
-                self.save_metrics(forecast)
+                # self.save_metrics(forecast)
+
+    def simple_backtest(self, h_fq, N_generations, horizons):
+        
+        self.hurst_fq = h_fq
+        self.H_distrib = self.hurstobj.get_changes_Hurst(self.hurst_fq).dropna()
+        self.horizon = horizons
+        self.generation = N_generations
+                
+        for date, h in self.H_distrib.items():
+
+            forecast = Forecast(self.hurstobj,
+                            self.hurst_fq,
+                            date,
+                            self.generation,
+                            self.horizon,
+                            h)
+                    
+            self.filling_data(forecast)
+                                
+        self.compute_mean_forecated_data()
+
+        self.save()
+        
+        # self.hit_ratio = self.compute_Hit_Ratio()
+
+        # self.mse = self.compute_MSE()
+
 
     def filling_data(self, forecast : Forecast) -> None:
 
@@ -133,7 +164,7 @@ class BacktestStrategy:
         
         # self.mean_forecasted_data["Log Return"].loc[self.mean_forecasted_data["Log Return"].reset_index().index % self.horizon == 0] = np.nan
 
-        compute_entropy_indicator(self.mean_forecasted_data, 5, 2)
+        # compute_entropy_indicator(self.mean_forecasted_data, 5, 2)
 
 
 
