@@ -1,12 +1,10 @@
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt 
 from sklearn.metrics import r2_score, mean_squared_error
-from Forcasting import Forecast
+from Forecasting import CovarianceBased
 from Hurst import HurstDistribution
-from typing import Dict
-import os
-from Entropy import compute_entropy_indicator
 from datetime import datetime
 
 class BacktestStrategy:
@@ -48,7 +46,6 @@ class BacktestStrategy:
         return f"{self.hurstobj.dataobj} - Hurst freq {self.hurst_fq} - Generations {self.generation} - Horizon {self.horizon}"
 
 
-        
     # Get methods 
     def get_analyst_combinations(self, analyst_name : str) -> dict[str, dict[int, int]] : 
         data : dict[str, dict[int, int]] = {
@@ -74,7 +71,7 @@ class BacktestStrategy:
 
         return data[analyst_name]
 
-    def get_compare_data(self, forecast : Forecast) -> pd.DataFrame:
+    def get_compare_data(self, forecast) -> pd.DataFrame:
 
         indexes = forecast.get_index_from_S0_to_Horizon()
 
@@ -150,7 +147,7 @@ class BacktestStrategy:
         # self.mse = self.compute_MSE()
 
 
-    def filling_data(self, forecast : Forecast) -> None:
+    def filling_data(self, forecast) -> None:
 
         forecast.forcasting(self.hurst_fq)
 
@@ -190,7 +187,6 @@ class BacktestStrategy:
         return mean_squared_error(y_true, y_pred)
     
     def compute_Hit_Ratio(self):
-        # Supprimer les doublons
         dates_SO = self.H_distrib.keys()
     
         real_values = self.original_data.drop(dates_SO)
@@ -199,21 +195,18 @@ class BacktestStrategy:
         if len(real_values) < self.horizon:
             print(f"Données réelles incomplètes pour comparaison. Comparaison sur {len(real_values)} jours seulement.")
 
-        # Signe des vecteurs 
         real_direction = np.sign(np.diff(real_values.to_numpy().flatten()))  
         forecast_direction = np.sign(np.diff(forecast_values.to_numpy().flatten()))  
 
-        # Vecteur de même taille
         min_len = min(len(real_direction), len(forecast_direction))
         real_direction = real_direction[:min_len]
         forecast_direction = forecast_direction[:min_len]
 
-        # Moyenne du vecteur binaire 
         hit_rate = (real_direction == forecast_direction).mean()
 
         return hit_rate
 
-    def save_metrics(self, forcast : Forecast):
+    def save_metrics(self):
 
         # Verifier si dossier et fichier existent    
         dir_path = f"Data\\Forecasting\\Metrics\\{self.hurstobj.dataobj.timeframe}"
@@ -281,3 +274,35 @@ class BacktestStrategy:
         with pd.ExcelWriter(file_path) as writer:
             self.original_data[["Price", "Log Return", "Efficiency Indicator"]].to_excel(writer, sheet_name='Original', index=True)
             self.mean_forecasted_data.to_excel(writer, sheet_name='Forecast', index=True)
+
+
+if __name__ == "__main__":
+
+    # spy_daily = HurstDistribution(ticker="SPY", timeframe="Daily", start_date="2023-01-01")
+
+    spy_daily = pd.read_excel("Data Hurst\\AAPL.xlsx", index_col=0, sheet_name="Daily")
+
+    forecast = CovarianceBased(h_data=spy_daily,
+                            h_freq="1M",
+                            date="2024-01-03",
+                            horizon=10)
+
+
+    df = forecast.h_data.copy()
+
+    df[f"Forecast horizon {10}"] = None
+
+
+    for i in range(1,len(df)):
+
+        date = df.index[i]
+
+        covbased = CovarianceBased(spy_daily, "1M", date, 10)
+
+        df.loc[date, f"Forecast horizon {10}"] = covbased.forecasting()
+
+
+    plt.plot(df[f"Forecast horizon {10}"], color = "red")
+    plt.plot(df["Log Price"], color="blue", alpha=0.5)
+
+    plt.show()

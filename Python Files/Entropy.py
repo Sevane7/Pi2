@@ -8,7 +8,7 @@ def test_stats_article2(data : pd.DataFrame, L : int):
         # print('L is greater than the size of the time series')
         return [3.0, pd.DataFrame()]
 
-    symbolize_price_returns = data['Price'].pct_change().dropna().apply(lambda x: 1 if x > 0 else 0)
+    symbolize_price_returns = data['Log Price'].pct_change().dropna().apply(lambda x: 1 if x > 0 else 0)
 
     subsequences_count = {}
 
