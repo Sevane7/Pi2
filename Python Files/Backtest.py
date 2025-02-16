@@ -190,6 +190,7 @@ class BacktestStrategy:
         return mean_squared_error(y_true, y_pred)
     
     def compute_Hit_Ratio(self):
+        # Supprimer les doublons
         dates_SO = self.H_distrib.keys()
     
         real_values = self.original_data.drop(dates_SO)
@@ -198,13 +199,16 @@ class BacktestStrategy:
         if len(real_values) < self.horizon:
             print(f"Données réelles incomplètes pour comparaison. Comparaison sur {len(real_values)} jours seulement.")
 
+        # Signe des vecteurs 
         real_direction = np.sign(np.diff(real_values.to_numpy().flatten()))  
         forecast_direction = np.sign(np.diff(forecast_values.to_numpy().flatten()))  
 
+        # Vecteur de même taille
         min_len = min(len(real_direction), len(forecast_direction))
         real_direction = real_direction[:min_len]
         forecast_direction = forecast_direction[:min_len]
 
+        # Moyenne du vecteur binaire 
         hit_rate = (real_direction == forecast_direction).mean()
 
         return hit_rate
