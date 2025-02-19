@@ -13,7 +13,6 @@ class HurstDistribution(BloombergData):
     def __init__(self,
                  ticker : str,
                  timeframe : str,
-                 periodogram_method = True,
                  start_date = None,
                  end_date = None):
         
@@ -23,9 +22,6 @@ class HurstDistribution(BloombergData):
         self.frequencies = list()
         self.freq_window = dict[str:int]
         self.fill_freq()
-
-        # Methode d'estimation : Log Periodogram ou Wittle likelyhood
-        self.periodogram_method = periodogram_method
 
         # 2 Datafrmes :
             # Une avec toutes les données
@@ -51,14 +47,14 @@ class HurstDistribution(BloombergData):
     def fill_freq(self) -> None:
     
         if(self.timeframe == "Daily"):          
-            self.frequencies = ["2W","1M", "3M", "6M", "1Y", "3Y", "5Y"]
+            self.frequencies = ["1W", "2W","1M", "3M", "6M", "1Y", "3Y", "5Y"]
 
             self.freq_window = {
                 fq : self.convert_to_days(fq) for fq in self.frequencies
             }
         
         else:
-            self.frequencies = ["15min", "30min", "1h", "3h", "6h", "12h"] 
+            self.frequencies = ["5min", "15min", "30min", "1h", "3h", "6h", "12h"] 
 
             self.freq_window = {
                 fq : int(pd.Timedelta(fq).total_seconds() // 60) for fq in self.frequencies
@@ -185,17 +181,7 @@ class HurstDistribution(BloombergData):
 
             print(fq)
 
-            if self.periodogram_method:
-
-                self.data[f"Hurst {fq}"] = (
-                    self.data["Log Price"]
-                    .rolling(window=window,
-                            min_periods=2)
-                    .apply(self.logPeriodo,
-                        raw=True)
-                    )
-            
-            else:
+            if fq == "1W" or fq == "5min":
                 self.data[f"Hurst {fq}"] = (
                     self.data["Log Price"]
                     .rolling(window=window,
@@ -204,6 +190,14 @@ class HurstDistribution(BloombergData):
                         raw=True)
                     )
                 
+            else:
+                self.data[f"Hurst {fq}"] = (
+                    self.data["Log Price"]
+                    .rolling(window=window,
+                            min_periods=2)
+                    .apply(self.logPeriodo,
+                        raw=True)
+                    )                
         
         return self.bound_data(self.data)
 
@@ -234,28 +228,20 @@ class HurstDistribution(BloombergData):
 
 
 
-def Save_Hurst_Distrib(method = "Periodo"):
+def Save_Hurst_Distrib():
     
-    max_index = treshold_index()
     
-    periodo_meth = True 
-
     for timeframe in os.listdir("Data"):
 
         for file in os.listdir(f"Data\\{timeframe}"):
             
             ticker = file.split(".xlsx")[0]
 
-            output_file = f"Hurst {method}\\{ticker}.xlsx"
-            
             print(timeframe, ticker)
 
-            df = None
-
-            if method != "Periodo":
-                periodo_meth = False
-                end_date = max_index[timeframe][ticker]
-                df = HurstDistribution(ticker=ticker, timeframe=timeframe, periodogram_method=periodo_meth, end_date=end_date)      
+            output_file = f"Hurst Data\\{ticker}.xlsx"
+            
+            df = HurstDistribution(ticker=ticker, timeframe=timeframe)      
 
             mode = "a" if os.path.exists(output_file) else "w"
 
@@ -297,7 +283,7 @@ if __name__ == "__main__":
 
     warnings.filterwarnings("ignore")
 
-    Save_Hurst_Distrib("Whittle")
+    Save_Hurst_Distrib()
     
     # Finir de remplir les daily
     # Trouer solution pour les H chelou
