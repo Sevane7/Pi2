@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from scipy.stats import gamma
 
 
 def test_stats_article2(data : pd.DataFrame, L : int):
@@ -118,3 +119,14 @@ def compute_entropy_indicator(df : pd.DataFrame, window_size, L):
     # print(set(df.index).symmetric_difference(set(reshape_df.index)))
 
     df['Efficiency Indicator'] = reshape_df['Efficiency Indicator'].reindex(df.index)
+
+def symbolize_market_info(data : pd.DataFrame, L : int, window_size : int, alpha : float):
+    n = window_size
+    k = 2**(L - 1)
+    theta = 1 / (n*np.log(2))
+
+    threshold = gamma.ppf(1 - alpha, a=k, scale=theta)
+
+    data[f"Symbolize Market info ({(1-alpha)*100} %)"] = data['Efficiency_Indicator'].apply(lambda x: x <= threshold)
+
+    return threshold
