@@ -174,7 +174,7 @@ class HurstDistribution(BloombergData):
         except:
             return np.nan
 
-
+    # Apply Hurst Methods
     def hurst_distribution(self) -> pd.DataFrame:
 
         for fq, window in self.freq_window.items():
@@ -203,35 +203,43 @@ class HurstDistribution(BloombergData):
 
 
 
-    def plot_distrib(self, freq : list):
+def plot_distrib(dir_path : str, ticker : str, freq : list, timeframe : str, start_index = None, end_index = None):
 
-        hurst_columns : list = [f"Hurst {fq}" for fq in freq if f"Hurst {fq}" in self.prepared_data.columns]
+    file_path = os.path.join(dir_path, f"{ticker}.xlsx")
 
-        plt.figure(figsize=(13,7))
+    distrib : pd.DataFrame = pd.read_excel(file_path, sheet_name=timeframe ,index_col=0)
 
-        for i, col in enumerate(hurst_columns):
+    start_index = 0 if start_index == None else start_index
+    end_index = len(distrib) if end_index == None else end_index
 
-            plt.plot(self.prepared_data[col], label = col, color = np.random.rand(3,))
+    distrib = distrib.iloc[start_index : end_index]
 
-        plt.title(f"Hurst Distribution - {self.__str__()}")
+    hurst_columns : list = [f"Hurst {fq}" for fq in freq if f"Hurst {fq}" in distrib.columns]
 
-        plt.xlabel("Date")
+    plt.figure(figsize=(13,7))
 
-        plt.ylabel("Hurst Exponent")
+    for i, col in enumerate(hurst_columns):
 
-        plt.legend()
-        
-        plt.grid(True, alpha=0.7)  
-        
-        plt.show() 
+        plt.plot(distrib[col], label = col, color = np.random.rand(3,))
 
+    plt.title(f"Hurst Distribution - {timeframe} {ticker}")
 
+    plt.xlabel("Date")
+
+    plt.ylabel("Hurst Exponent")
+
+    plt.legend()
+    
+    plt.grid(True, alpha=0.7)  
+    
+    plt.show() 
 
 
 def Save_Hurst_Distrib():
-    
-    
-    for timeframe in os.listdir("Data"):
+
+    timeframes = ["Daily"]
+      
+    for timeframe in timeframes:
 
         for file in os.listdir(f"Data\\{timeframe}"):
             
@@ -239,13 +247,13 @@ def Save_Hurst_Distrib():
 
             print(timeframe, ticker)
 
-            output_file = f"Hurst Data\\{ticker}.xlsx"
+            output_file = f"Data\\Data Hurst\\{ticker}.xlsx"
             
             df = HurstDistribution(ticker=ticker, timeframe=timeframe)      
 
             mode = "a" if os.path.exists(output_file) else "w"
 
-            with pd.ExcelWriter(output_file, mode=mode) as writer:
+            with pd.ExcelWriter(output_file, mode=mode, engine="openpyxl") as writer:
 
                 df.prepared_data.to_excel(writer, sheet_name=timeframe)
 
@@ -275,7 +283,36 @@ def treshold_index(root = "Data"):
     return res
 
 
+def clean_distributions(file_path : str, min_drop = 362, daily_drop = 758):
 
+    sheets = ["1min", "Daily"]
+
+    dfs = {}
+
+    for sheet in sheets:
+
+        drop_col : str
+        drop_lign : int 
+
+        if sheet == "1min":
+            drop_col = "Hurst 5min"
+            drop_lign = min_drop
+        
+        else:
+            drop_col = "Hurst 1W"
+            drop_lign = daily_drop
+
+        print(file_path, sheet)
+        
+        df = pd.read_excel(file_path, sheet_name=sheet, index_col=0, engine="openpyxl")
+        df.drop(labels=[drop_col], axis=1, inplace=True)
+        dfs[sheet] = df.iloc[drop_lign:]
+        
+    with pd.ExcelWriter(file_path, engine="xlsxwriter", mode="w") as writer:
+        
+        for sheet, df in dfs.items():
+            
+            df.to_excel(writer, sheet_name=sheet)
 
 
 
@@ -283,7 +320,21 @@ if __name__ == "__main__":
 
     warnings.filterwarnings("ignore")
 
-    Save_Hurst_Distrib()
-    
-    # Finir de remplir les daily
-    # Trouer solution pour les H chelou
+    dir_path = "Data\\Data Hurst - Final"
+
+    # Save_Hurst_Distrib()
+    # for file in os.listdir(dir_path):
+
+    #     file_path = os.path.join(dir_path, file)
+        
+    #     clean_distributions(file_path)
+
+    daily_frequencies = ["2W", "1M", "3M", "6M", "1Y", "3Y", "5Y"]
+    minutes_frequencies = ["15min", "30min", "1h", "3h", "6h", "12h"]
+
+    daily = "Daily"
+    minutes = "1min"
+    ticker = "BTC"
+
+    plot_distrib(dir_path, ticker, minutes_frequencies, minutes)
+
