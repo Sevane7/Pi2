@@ -2,9 +2,9 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from Hurst import HurstDistribution
 from scipy.linalg import cholesky
 from abc import abstractmethod
+import json
 
 class Forecast:
 
@@ -186,7 +186,8 @@ class CovarianceBased(Forecast):
             (pow(sigma, 2) / 2) * (
             np.abs(s)**(2*hurst) + np.abs(t)**(2*hurst) - np.abs(s-t)**(2*hurst))
             )
-    
+
+
     def get_sigma_Y(self) -> np.ndarray:
 
         res = np.ndarray((self.t_n, self.t_n))
@@ -195,10 +196,9 @@ class CovarianceBased(Forecast):
             for j in range(1, res.shape[1]+1):
                 res[i-1,j-1] = self.get_cov_fbm(self.vol, i, j, self.H)
 
-        return res
+        return res        
 
-        
-    
+
     def get_sigma_XY(self) -> np.ndarray:
 
         t_plus_h = self.t_n + self.horizon
@@ -219,3 +219,93 @@ class CovarianceBased(Forecast):
 
         return X_t_h_Y.item()
     
+
+def apply_forecast() -> dict[str, dict[str, dict[str, dict[int, dict[pd.Series]]]]]:
+    
+    dir_hurst = r"Data\\Data Hurst - Final"
+
+    ticker_dict : dict[str, dict]
+
+    for file in [os.listdir(dir_hurst)[0]]:
+
+
+        file_hurst = os.path.join(dir_hurst, file)
+
+        ticker = file.split(".xlsx")[0]
+        print(ticker)
+
+        timeframe_dict : dict[str, dict]
+
+        for timeframe in ["1min", "Daily"]:
+            print(timeframe)
+
+            h_distrib = pd.read_excel(file_hurst, sheet_name=timeframe, index_col=0)
+
+            frequencies = h_distrib.columns.to_list()
+            frequencies.remove("Log Price")
+            h_fq = [fq.split("Hurst ")[1] for fq in frequencies]
+
+            hfq_dict : dict[str, dict]
+
+            for h in h_fq:
+                print(h)
+
+                horizon_forecast : dict[int, pd.Series]
+
+                for horizon in [1, 5, 10]:
+                    print(horizon)
+
+                    dates = h_distrib.index
+
+                    name_serie = f"{ticker} {timeframe} Hurst {h} Horizon {horizon}"
+
+                    forecast = pd.Series(None, index=dates, name=name_serie)
+
+                    for i, date in enumerate(dates):
+
+                        if i > 2 and i + horizon < len(h_distrib):
+
+                            forecastobj = CovarianceBased(h_data=h_distrib,
+                                                        h_freq=h,
+                                                        date=date,
+                                                        horizon=horizon)
+                            
+                            predict_date = dates[i + horizon]
+
+                            print(len(forecastobj.sigma_Y.shape))
+                            
+                            forecast.loc[predict_date] = forecastobj.forecasting()
+                    
+                    plt.figure(figsize=(12,8))
+                    plt.plot(forecast, label="Forecasted Price", color="blue")
+                    plt.plot(h_distrib["Log Price"], label = "Real Price", color="red")
+                    plt.title(f"Forecast {forecast.name}")
+                    plt.xlabel("Date")
+                    plt.ylabel("Price")
+                    plt.legend()
+                    plt.grid(True, alpha=0.7)  
+                    plt.show() 
+
+                    horizon_forecast[horizon] = forecast
+
+                hfq_dict[h] = horizon_forecast
+            
+            timeframe_dict[timeframe] = hfq_dict
+
+        ticker_dict[timeframe] = timeframe_dict
+
+
+    return timeframe_dict
+
+def save_dict(name:str, dico : dict):
+
+    with open(rf"Data\\Forecasting\\{name}.json", mode="w") as file:
+        json.dump(dico, file)
+
+
+
+if __name__ == "__main__":
+
+    test = apply_forecast()
+
+    save_dict("test", test)
