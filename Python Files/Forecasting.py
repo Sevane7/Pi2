@@ -9,10 +9,10 @@ import json
 class Forecast:
 
     def __init__(self,
-                 h_data : pd.DataFrame,
-                 h_freq : str,
-                 date : str,
-                 horizon : int):
+                h_data : pd.DataFrame,
+                h_freq : str,
+                date : str,
+                horizon : int):
         
         # Data 
         self.h_data = h_data
@@ -83,11 +83,11 @@ class Forecast:
 class MonteCarlo(Forecast):
 
     def __init__(self,
-                 h_data : pd.DataFrame,
-                 h_freq : str,
-                 date : str,
-                 horizon : int,
-                 genereation : int):
+                h_data : pd.DataFrame,
+                h_freq : str,
+                date : str,
+                horizon : int,
+                genereation : int):
         
         super().__init__(h_data, h_freq, date, horizon)
         
@@ -166,11 +166,11 @@ class MonteCarlo(Forecast):
 class CovarianceBased(Forecast):
 
     def __init__(self,
-                 h_data : pd.DataFrame,
-                 h_freq : str,
-                 date : str,
-                 horizon : int
-                 ):
+                h_data : pd.DataFrame,
+                h_freq : str,
+                date : str,
+                horizon : int
+                ):
         
         super().__init__(h_data.loc[:date], h_freq, date, horizon)
 
@@ -224,7 +224,7 @@ def apply_forecast() -> dict[str, dict[str, dict[str, dict[int, dict[pd.Series]]
     
     dir_hurst = r"Data\\Data Hurst - Final"
 
-    ticker_dict : dict[str, dict]
+    ticker_dict : dict[str, dict] = {}
 
     for file in [os.listdir(dir_hurst)[0]]:
 
@@ -234,26 +234,24 @@ def apply_forecast() -> dict[str, dict[str, dict[str, dict[int, dict[pd.Series]]
         ticker = file.split(".xlsx")[0]
         print(ticker)
 
-        timeframe_dict : dict[str, dict]
+        timeframe_dict : dict[str, dict] = {}
 
         for timeframe in ["1min", "Daily"]:
             print(timeframe)
 
-            h_distrib = pd.read_excel(file_hurst, sheet_name=timeframe, index_col=0)
+            h_distrib = pd.read_excel(file_hurst, sheet_name=timeframe, index_col=0).iloc[200:250]
 
             frequencies = h_distrib.columns.to_list()
             frequencies.remove("Log Price")
             h_fq = [fq.split("Hurst ")[1] for fq in frequencies]
 
-            hfq_dict : dict[str, dict]
+            hfq_dict : dict[str, dict] = {}
 
             for h in h_fq:
-                print(h)
 
-                horizon_forecast : dict[int, pd.Series]
+                horizon_forecast : dict[int, pd.Series] = {}
 
-                for horizon in [1, 5, 10]:
-                    print(horizon)
+                for horizon in [5, 10]:
 
                     dates = h_distrib.index
 
@@ -263,7 +261,7 @@ def apply_forecast() -> dict[str, dict[str, dict[str, dict[int, dict[pd.Series]]
 
                     for i, date in enumerate(dates):
 
-                        if i > 2 and i + horizon < len(h_distrib):
+                        if i > 1 and i + horizon < len(h_distrib):
 
                             forecastobj = CovarianceBased(h_data=h_distrib,
                                                         h_freq=h,
@@ -271,20 +269,18 @@ def apply_forecast() -> dict[str, dict[str, dict[str, dict[int, dict[pd.Series]]
                                                         horizon=horizon)
                             
                             predict_date = dates[i + horizon]
-
-                            print(len(forecastobj.sigma_Y.shape))
                             
                             forecast.loc[predict_date] = forecastobj.forecasting()
                     
-                    plt.figure(figsize=(12,8))
-                    plt.plot(forecast, label="Forecasted Price", color="blue")
-                    plt.plot(h_distrib["Log Price"], label = "Real Price", color="red")
-                    plt.title(f"Forecast {forecast.name}")
-                    plt.xlabel("Date")
-                    plt.ylabel("Price")
-                    plt.legend()
-                    plt.grid(True, alpha=0.7)  
-                    plt.show() 
+                    # plt.figure(figsize=(12,8))
+                    # plt.plot(forecast, label="Forecasted Price", color="blue")
+                    # plt.plot(h_distrib["Log Price"], label = "Real Price", color="red")
+                    # plt.title(f"Forecast {forecast.name}")
+                    # plt.xlabel("Date")
+                    # plt.ylabel("Price")
+                    # plt.legend()
+                    # plt.grid(True, alpha=0.7)  
+                    # plt.show() 
 
                     horizon_forecast[horizon] = forecast
 
@@ -292,20 +288,55 @@ def apply_forecast() -> dict[str, dict[str, dict[str, dict[int, dict[pd.Series]]
             
             timeframe_dict[timeframe] = hfq_dict
 
-        ticker_dict[timeframe] = timeframe_dict
+        ticker_dict[ticker] = timeframe_dict
 
 
-    return timeframe_dict
+    return ticker_dict
 
-def save_dict(name:str, dico : dict):
+def save_forecast(name:str, dico : dict):
+
+    def convert_series(obj):
+        if isinstance(obj, pd.Series):
+            return {
+                "index": obj.index.astype(str).tolist(),  # Convertir DateTimeIndex en str
+                "values": obj.tolist()  # Garder les valeurs en liste
+            }
+        if isinstance(obj, dict):
+            return {k: convert_series(v) for k, v in obj.items()}  # Récursivité
+        return obj  # Retourner inchangé si ce n'est pas une Series
 
     with open(rf"Data\\Forecasting\\{name}.json", mode="w") as file:
-        json.dump(dico, file)
+        json.dump(convert_series(dico), file)
 
+def load_forecast(name:str):
+    with open(rf"Data\\Forecasting\\{name}.json", mode="r") as f:
+        loaded_data = json.load(f)
+
+    # Fonction pour reconstruire les pd.Series
+    def reconstruct_series(obj):
+        if isinstance(obj, dict) and "index" in obj and "values" in obj:
+            index = pd.to_datetime(obj["index"])  # Reconversion des chaînes en DateTimeIndex
+            return pd.Series(obj["values"], index=index)
+        if isinstance(obj, dict):
+            return {k: reconstruct_series(v) for k, v in obj.items()}  # Récursivité
+        return obj
+    
+    return reconstruct_series(loaded_data)
 
 
 if __name__ == "__main__":
 
-    test = apply_forecast()
+    # test = apply_forecast()
 
-    save_dict("test", test)
+    # save_forecast("test", test)
+
+    loaded_f = load_forecast("test")
+    
+    for k in loaded_f.keys():
+        print(k)
+        for k2 in loaded_f[k].keys():
+            print("    ", k2)
+            for k3 in loaded_f[k][k2].keys():
+                print("    ", k3)
+                for k4, v in loaded_f[k][k2][k3].items():
+                    print(f"         {k4}, {type(v)}")
