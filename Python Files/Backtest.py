@@ -25,8 +25,8 @@ class BacktestStrategy:
         self.data : pd.DataFrame = self.get_data(forecast)   
 
         # Metrics
-        self.hit_ratio : float = round(self.compute_MSE(), 3)
-        self.mse : float = round(self.compute_Hit_Ratio(), 3)
+        self.hit_ratio : float = round(self.compute_Hit_Ratio(), 3)
+        self.mse : float = round(self.compute_MSE(), 3)
 
 
 
@@ -45,6 +45,16 @@ class BacktestStrategy:
         data = data.loc[indexes, "Log Price"]
 
         data = pd.concat([data, forecast.rename("Forecasted Price")], axis = 1)
+
+        # plt.figure(figsize=(12,8))
+        # plt.plot(data["Forecasted Price"], label="Forecasted Price", color="blue")
+        # plt.plot(data["Log Price"], label = "Real Price", color="red")
+        # plt.title(f"Forecast {forecast.name}")
+        # plt.xlabel("Date")
+        # plt.ylabel("Price")
+        # plt.legend()
+        # plt.grid(True, alpha=0.7)  
+        # plt.show()
 
         return data.dropna()
 
@@ -70,7 +80,9 @@ class BacktestStrategy:
         real_direction = real_direction[:min_len]
         forecast_direction = forecast_direction[:min_len]
 
-        hit_rate = (real_direction == forecast_direction).mean()
+        res = (real_direction == forecast_direction)
+
+        hit_rate = res.mean()
 
         return hit_rate
 

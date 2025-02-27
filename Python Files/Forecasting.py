@@ -272,16 +272,6 @@ def apply_forecast() -> dict[str, dict[str, dict[str, dict[int, dict[pd.Series]]
                             
                             forecast.loc[predict_date] = forecastobj.forecasting()
                     
-                    # plt.figure(figsize=(12,8))
-                    # plt.plot(forecast, label="Forecasted Price", color="blue")
-                    # plt.plot(h_distrib["Log Price"], label = "Real Price", color="red")
-                    # plt.title(f"Forecast {forecast.name}")
-                    # plt.xlabel("Date")
-                    # plt.ylabel("Price")
-                    # plt.legend()
-                    # plt.grid(True, alpha=0.7)  
-                    # plt.show() 
-
                     horizon_forecast[horizon] = forecast
 
                 hfq_dict[h] = horizon_forecast
