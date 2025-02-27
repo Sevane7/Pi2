@@ -3,200 +3,68 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt 
 from sklearn.metrics import r2_score, mean_squared_error
-from Forecasting import CovarianceBased
-from Hurst import HurstDistribution
+from Forecasting import CovarianceBased, load_forecast
 from datetime import datetime
 
 class BacktestStrategy:
 
     def __init__(self,
-                 hurstobj : HurstDistribution,
-                 analyst_name : str,
-                 simple_backtest : bool
+                 ticker : str,
+                 timeframe : str,
+                 h_freq : str,
+                 horizon : int,
+                 forecast : pd.Series,
                  ):
         
         # First attributs
-        self.hurstobj : HurstDistribution = hurstobj
-        self.data : pd.DataFrame = hurstobj.data        
-        self.combi_generations = self.get_analyst_combinations(analyst_name)
+        self.ticker = ticker
+        self.timeframe = timeframe
+        self.h_freq = h_freq
+        self.horizon = horizon
 
-        # Hurst
-        self.hurst_fq : str
-        self.H_distrib : pd.Series
-
-        # Forcast
-        self.generation : int
-        self.horizon : int
-
-        # Forcast Data
-        self.original_data = pd.DataFrame()
-        self.forecasted_data = pd.DataFrame()
-        self.mean_forecasted_data = pd.DataFrame()
+        self.data : pd.DataFrame = self.get_data(forecast)   
 
         # Metrics
-        self.hit_ratio : float
-        self.mse : float
+        self.hit_ratio : float = round(self.compute_MSE(), 3)
+        self.mse : float = round(self.compute_Hit_Ratio(), 3)
 
-        # Running Backtest
-        if simple_backtest == False:
-            self.backtest()
 
 
     def __str__(self):
         return f"{self.hurstobj.dataobj} - Hurst freq {self.hurst_fq} - Generations {self.generation} - Horizon {self.horizon}"
 
 
-    # Get methods 
-    def get_analyst_combinations(self, analyst_name : str) -> dict[str, dict[int, int]] : 
-        data : dict[str, dict[int, int]] = {
-            "Ghali": {
-                "1M": {1: 1000, 3: 1000, 5: 2000, 7: 3000, 10: 3000, 20: 5000},
-                "5Y": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500, 120: 6400, 200: 7300, 300: 8200, 400: 9100, 500: 10000, 650: 10900, 900: 20000}
-            },
-            "Jules": {
-                "2W": {1: 1000, 3: 1000, 5: 2000, 7: 3000, 10: 3000},
-                "3M": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000}
-            },
-            "Julie": {
-                "6M": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500}
-            },
-            "Sevane": {
-                "1Y": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500, 120: 6400, 200: 7300},
-                "3Y": {1: 1000, 3: 1000, 5: 2000, 10: 3000, 25: 3000, 40: 5000, 85: 5500, 120: 6400, 200: 7300, 300: 8200, 400: 9100, 500: 10000}
-            },
-            "Tommy": {
-                "1W": {1: 1000, 3: 1000, 5: 2000}
-            }
-        }
+    def get_data(self, forecast : pd.Series) -> pd.DataFrame:
 
-        return data[analyst_name]
+        file = rf"Data\\Data Hurst - Final\\{self.ticker}.xlsx"
 
-    def get_compare_data(self, forecast) -> pd.DataFrame:
+        indexes = forecast.index
 
-        indexes = forecast.get_index_from_S0_to_Horizon()
+        data = pd.read_excel(file, index_col=0, sheet_name=self.timeframe)
 
-        return self.data.loc[indexes]
+        data = data.loc[indexes, "Log Price"]
+
+        data = pd.concat([data, forecast.rename("Forecasted Price")], axis = 1)
+
+        return data.dropna()
+
     
-
-    # Running backtest
-    def backtest(self):
-        """Forcast pour toute la période donnée.  
-        Initialise les attributs hurst_fq, horizon, generation, et les data (originale, forcast, mean_forcast).  
-        """
-
-        for h_freq, horizon_gene in self.combi_generations.items():
-
-            self.hurst_fq = h_freq
-
-            for horiz, gene in horizon_gene.items():
-
-                self.horizon = horiz
-
-                self.generation = gene
-                
-                self.H_distrib = self.hurstobj.get_changes_Hurst(self.hurst_fq).dropna()
-
-                print(datetime.now().strftime("%H:%M:%S"))
-                print(f"Running {self}")
-                
-                for date, h in self.H_distrib.items():
-
-                    forecast = Forecast(self.hurstobj,
-                                    self.hurst_fq,
-                                    date,
-                                    self.generation,
-                                    self.horizon,
-                                    h)
-                    
-                    self.filling_data(forecast)
-                               
-                self.compute_mean_forecated_data()
-                
-                self.save()
-                
-                self.hit_ratio = self.compute_Hit_Ratio()
-
-                self.mse = self.compute_MSE()
-
-                self.save_metrics(forecast)
-
-    def simple_backtest(self, h_fq, N_generations, horizons):
-        
-        self.hurst_fq = h_fq
-        self.H_distrib = self.hurstobj.get_changes_Hurst(self.hurst_fq).dropna()
-        self.horizon = horizons
-        self.generation = N_generations
-                
-        for date, h in self.H_distrib.items():
-
-            forecast = Forecast(self.hurstobj,
-                            self.hurst_fq,
-                            date,
-                            self.generation,
-                            self.horizon,
-                            h)
-                    
-            self.filling_data(forecast)
-                                
-        self.compute_mean_forecated_data()
-
-        self.save()
-        
-        # self.hit_ratio = self.compute_Hit_Ratio()
-
-        # self.mse = self.compute_MSE()
-
-
-    def filling_data(self, forecast) -> None:
-
-        forecast.forcasting(self.hurst_fq)
-
-        self.original_data = pd.concat([self.original_data, self.get_compare_data(forecast)], axis=0)
-        
-        self.forecasted_data = pd.concat([self.forecasted_data,forecast.paths], axis=0)
-    
-    def compute_mean_forecated_data(self):
-
-        self.mean_forecasted_data = pd.DataFrame(self.forecasted_data.mean(axis=1), columns=["Price"])
-
-        self.mean_forecasted_data["Log Return"] = np.log(self.mean_forecasted_data["Price"] / self.mean_forecasted_data["Price"].shift())
-        
-        # self.mean_forecasted_data["Log Return"].loc[self.mean_forecasted_data["Log Return"].reset_index().index % self.horizon == 0] = np.nan
-
-        # compute_entropy_indicator(self.mean_forecasted_data, 5, 2)
-
-
-
-
-
-    # Metrics methods
     def compute_MSE(self):
-
-        dates_SO = self.H_distrib.keys()
         
-        y_true = self.original_data.loc[:, "Price"].drop(dates_SO)
+        y_true = self.data["Log Price"].to_list()
 
-        y_pred = self.mean_forecasted_data.loc[:, "Price"].drop(dates_SO)
-
-        # plt.plot(y_true, label="original data", c="blue")
-        # plt.plot(y_pred, label ="forcast", c="red")
-        # plt.grid(True)
-        # plt.legend()
-        # plt.show()
+        y_pred = self.data["Forecasted Price"].to_list()
 
         return mean_squared_error(y_true, y_pred)
     
     def compute_Hit_Ratio(self):
-        dates_SO = self.H_distrib.keys()
-    
-        real_values = self.original_data.drop(dates_SO)
-        forecast_values = self.mean_forecasted_data.drop(dates_SO)  
-        
-        if len(real_values) < self.horizon:
-            print(f"Données réelles incomplètes pour comparaison. Comparaison sur {len(real_values)} jours seulement.")
 
-        real_direction = np.sign(np.diff(real_values.to_numpy().flatten()))  
-        forecast_direction = np.sign(np.diff(forecast_values.to_numpy().flatten()))  
+        y_true = self.data["Log Price"].to_numpy()
+
+        y_pred = self.data["Forecasted Price"].to_numpy()
+        
+        real_direction = np.sign(np.diff(y_true.flatten()))  
+        forecast_direction = np.sign(np.diff(y_pred.flatten()))  
 
         min_len = min(len(real_direction), len(forecast_direction))
         real_direction = real_direction[:min_len]
@@ -276,33 +144,121 @@ class BacktestStrategy:
             self.mean_forecasted_data.to_excel(writer, sheet_name='Forecast', index=True)
 
 
+
+
+    """
+        # Running backtest
+    def backtest(self):
+        Forcast pour toute la période donnée.  
+        Initialise les attributs hurst_fq, horizon, generation, et les data (originale, forcast, mean_forcast).  
+        
+
+        for h_freq, horizon_gene in self.combi_generations.items():
+
+            self.hurst_fq = h_freq
+
+            for horiz, gene in horizon_gene.items():
+
+                self.horizon = horiz
+
+                self.generation = gene
+                
+                self.H_distrib = self.hurstobj.get_changes_Hurst(self.hurst_fq).dropna()
+
+                print(datetime.now().strftime("%H:%M:%S"))
+                print(f"Running {self}")
+                
+                for date, h in self.H_distrib.items():
+
+                    forecast = Forecast(self.hurstobj,
+                                    self.hurst_fq,
+                                    date,
+                                    self.generation,
+                                    self.horizon,
+                                    h)
+                    
+                    self.filling_data(forecast)
+                               
+                self.compute_mean_forecated_data()
+                
+                self.save()
+                
+                self.hit_ratio = self.compute_Hit_Ratio()
+
+                self.mse = self.compute_MSE()
+
+                self.save_metrics(forecast)
+
+    def simple_backtest(self, h_fq, N_generations, horizons):
+        
+        self.hurst_fq = h_fq
+        self.H_distrib = self.hurstobj.get_changes_Hurst(self.hurst_fq).dropna()
+        self.horizon = horizons
+        self.generation = N_generations
+                
+        for date, h in self.H_distrib.items():
+
+            forecast = Forecast(self.hurstobj,
+                            self.hurst_fq,
+                            date,
+                            self.generation,
+                            self.horizon,
+                            h)
+                    
+            self.filling_data(forecast)
+                                
+        self.compute_mean_forecated_data()
+
+        self.save()
+        
+        # self.hit_ratio = self.compute_Hit_Ratio()
+
+        # self.mse = self.compute_MSE()
+
+    def filling_data(self, forecast) -> None:
+
+        forecast.forcasting(self.hurst_fq)
+
+        self.original_data = pd.concat([self.original_data, self.get_compare_data(forecast)], axis=0)
+        
+        self.forecasted_data = pd.concat([self.forecasted_data,forecast.paths], axis=0)
+    
+    def compute_mean_forecated_data(self):
+
+        self.mean_forecasted_data = pd.DataFrame(self.forecasted_data.mean(axis=1), columns=["Price"])
+
+        self.mean_forecasted_data["Log Return"] = np.log(self.mean_forecasted_data["Price"] / self.mean_forecasted_data["Price"].shift())
+        
+        # self.mean_forecasted_data["Log Return"].loc[self.mean_forecasted_data["Log Return"].reset_index().index % self.horizon == 0] = np.nan
+
+        # compute_entropy_indicator(self.mean_forecasted_data, 5, 2)
+
+    """
+
+
+
+
 if __name__ == "__main__":
 
-    # spy_daily = HurstDistribution(ticker="SPY", timeframe="Daily", start_date="2023-01-01")
+    loaded_f = load_forecast("test")
 
-    spy_daily = pd.read_excel("Data Hurst\\AAPL.xlsx", index_col=0, sheet_name="Daily")
+    for tick in loaded_f.keys():
+        print(tick, end="\n\t")
 
-    forecast = CovarianceBased(h_data=spy_daily,
-                            h_freq="1M",
-                            date="2024-01-03",
-                            horizon=10)
+        for timeframe in loaded_f[tick].keys():
+            print(timeframe, end="\n\t\t")
 
+            for h_freq in loaded_f[tick][timeframe].keys():
+                print(h_freq, end="\n\t\t\t")
 
-    df = forecast.h_data.copy()
+                for horizon, forecast in loaded_f[tick][timeframe][h_freq].items():
 
-    df[f"Forecast horizon {10}"] = None
-
-
-    for i in range(1,len(df)):
-
-        date = df.index[i]
-
-        covbased = CovarianceBased(spy_daily, "1M", date, 10)
-
-        df.loc[date, f"Forecast horizon {10}"] = covbased.forecasting()
-
-
-    plt.plot(df[f"Forecast horizon {10}"], color = "red")
-    plt.plot(df["Log Price"], color="blue", alpha=0.5)
-
-    plt.show()
+                    current_backtest = BacktestStrategy(ticker=tick,
+                                                        timeframe=timeframe,
+                                                        h_freq=h_freq,
+                                                        horizon=horizon,
+                                                        forecast=forecast)
+                    
+                    print(horizon, end="\n\t\t\t\t")
+                    print(f"MSE : {current_backtest.mse}", end="\n\t\t\t\t")
+                    print(f"Hit Ratio : {current_backtest.hit_ratio}", end="\n\t\t\t")
