@@ -220,14 +220,15 @@ class CovarianceBased(Forecast):
         return X_t_h_Y.item()
     
 
-def apply_forecast() -> dict[str, dict[str, dict[str, dict[int, dict[pd.Series]]]]]:
+def apply_forecast(horizons : list, cov_matrix_length = 50) -> dict[str, dict[str, dict[str, dict[int, dict[pd.Series]]]]]:
     
     dir_hurst = r"Data\\Data Hurst - Final"
 
     ticker_dict : dict[str, dict] = {}
 
-    for file in [os.listdir(dir_hurst)[0]]:
+    for file in os.listdir(dir_hurst):
 
+        # print(dir_hurst, file)
 
         file_hurst = os.path.join(dir_hurst, file)
 
@@ -239,7 +240,15 @@ def apply_forecast() -> dict[str, dict[str, dict[str, dict[int, dict[pd.Series]]
         for timeframe in ["1min", "Daily"]:
             print(timeframe)
 
-            h_distrib = pd.read_excel(file_hurst, sheet_name=timeframe, index_col=0).iloc[200:250]
+            df_init = pd.read_excel(file_hurst, sheet_name=timeframe, index_col=0)
+
+            if len(df_init) == 0:
+                break
+
+            index_deb = np.random.randint(0, len(df_init) - cov_matrix_length)
+            index_end = index_deb + cov_matrix_length
+
+            h_distrib : pd.DataFrame = df_init.iloc[index_deb:index_end]
 
             frequencies = h_distrib.columns.to_list()
             frequencies.remove("Log Price")
@@ -251,7 +260,7 @@ def apply_forecast() -> dict[str, dict[str, dict[str, dict[int, dict[pd.Series]]
 
                 horizon_forecast : dict[int, pd.Series] = {}
 
-                for horizon in [5, 10]:
+                for horizon in horizons:
 
                     dates = h_distrib.index
 
@@ -269,8 +278,11 @@ def apply_forecast() -> dict[str, dict[str, dict[str, dict[int, dict[pd.Series]]
                                                         horizon=horizon)
                             
                             predict_date = dates[i + horizon]
-                            
-                            forecast.loc[predict_date] = forecastobj.forecasting()
+
+                            try:
+                                forecast.loc[predict_date] = forecastobj.forecasting()
+                            except:
+                                print(forecastobj.sigma_Y)
                     
                     horizon_forecast[horizon] = forecast
 
@@ -295,11 +307,11 @@ def save_forecast(name:str, dico : dict):
             return {k: convert_series(v) for k, v in obj.items()}  # Récursivité
         return obj  # Retourner inchangé si ce n'est pas une Series
 
-    with open(rf"Data\\Forecasting\\{name}.json", mode="w") as file:
+    with open(rf"Data\\Forecasting\\Covariance Based\\{name}.json", mode="w") as file:
         json.dump(convert_series(dico), file)
 
 def load_forecast(name:str):
-    with open(rf"Data\\Forecasting\\{name}.json", mode="r") as f:
+    with open(rf"Data\\Forecasting\\Covariance Based\\{name}.json", mode="r") as f:
         loaded_data = json.load(f)
 
     # Fonction pour reconstruire les pd.Series
@@ -316,17 +328,11 @@ def load_forecast(name:str):
 
 if __name__ == "__main__":
 
-    # test = apply_forecast()
+    horizons = [i for i in range(3, 13)]
 
-    # save_forecast("test", test)
+    for i in range(40, 110, 10):
+        print(f"Covariance Matrix Size : {i}", end="\n\n")
+        frcst = apply_forecast(horizons=horizons, cov_matrix_length=i)
 
-    loaded_f = load_forecast("test")
-    
-    for k in loaded_f.keys():
-        print(k)
-        for k2 in loaded_f[k].keys():
-            print("    ", k2)
-            for k3 in loaded_f[k][k2].keys():
-                print("    ", k3)
-                for k4, v in loaded_f[k][k2][k3].items():
-                    print(f"         {k4}, {type(v)}")
+        save_forecast(f"Covariance Based Size {i}", frcst)
+        print("\n")

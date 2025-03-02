@@ -2,9 +2,8 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt 
-from sklearn.metrics import r2_score, mean_squared_error
-from Forecasting import CovarianceBased, load_forecast
-from datetime import datetime
+from sklearn.metrics import mean_squared_error
+from Forecasting import load_forecast
 
 class BacktestStrategy:
 
@@ -25,13 +24,12 @@ class BacktestStrategy:
         self.data : pd.DataFrame = self.get_data(forecast)   
 
         # Metrics
-        self.hit_ratio : float = round(self.compute_Hit_Ratio(), 3)
-        self.mse : float = round(self.compute_MSE(), 3)
-
+        self.hit_ratio : float =self.compute_Hit_Ratio()
+        self.mse : float = self.compute_MSE()
 
 
     def __str__(self):
-        return f"{self.hurstobj.dataobj} - Hurst freq {self.hurst_fq} - Generations {self.generation} - Horizon {self.horizon}"
+        return f"{self.ticker} - {self.timeframe} - Hurst Freq {self.h_freq} - Horizon {self.horizon}"
 
 
     def get_data(self, forecast : pd.Series) -> pd.DataFrame:
@@ -45,16 +43,6 @@ class BacktestStrategy:
         data = data.loc[indexes, "Log Price"]
 
         data = pd.concat([data, forecast.rename("Forecasted Price")], axis = 1)
-
-        # plt.figure(figsize=(12,8))
-        # plt.plot(data["Forecasted Price"], label="Forecasted Price", color="blue")
-        # plt.plot(data["Log Price"], label = "Real Price", color="red")
-        # plt.title(f"Forecast {forecast.name}")
-        # plt.xlabel("Date")
-        # plt.ylabel("Price")
-        # plt.legend()
-        # plt.grid(True, alpha=0.7)  
-        # plt.show()
 
         return data.dropna()
 
@@ -86,19 +74,19 @@ class BacktestStrategy:
 
         return hit_rate
 
-    def save_metrics(self):
+    def save_metrics(self, size_matrix : str):
 
         # Verifier si dossier et fichier existent    
-        dir_path = f"Data\\Forecasting\\Metrics\\{self.hurstobj.dataobj.timeframe}"
-
-        os.makedirs(dir_path, exist_ok=True)
-        
-        file_path = os.path.join(dir_path, f"{self.hurstobj.ticker}.xlsx")
+        file_path = f"Data\\Forecasting\\Metrics\\Covariance Based Hit ratio and MSE.xlsx"
 
         new_data = pd.DataFrame({
-            "Forcast" : [self],
-            "From" : [self.hurstobj.dataobj.start],
-            "To" : [self.hurstobj.dataobj.end],
+            "Size Matrix" : [size_matrix],
+            "Asset" : [self.ticker],
+            "Timeframe" : [self.timeframe],
+            "Hurst Frequence" : [self.h_freq],
+            "Horizon" : [self.horizon],
+            "From" : [self.data.index[0]],
+            "To" : [self.data.index[-1]],
             "Hit Ratio" : [self.hit_ratio],
             "MSE" : [self.mse]
         })
@@ -114,23 +102,16 @@ class BacktestStrategy:
 
 
     # Plotting methods
-    def plot_original_VS_forcast(self, scatter = True):
+    def plot_original_VS_forcast(self):
         
-        if scatter: 
-            plt.scatter(self.original_data.index, self.original_data, c='red', label='original_data', marker='o', s=10, alpha=0.7)
-            plt.scatter(self.mean_forecasted_data.index, self.mean_forecasted_data, c='blue', label='mean_forecasted_data', marker='s', s=10, alpha=0.7)
-        
-        else:
-            plt.plot(self.original_data, c='red', label='original_data', alpha=0.7)
-            plt.plot(self.mean_forecasted_data, c='blue', label='mean_forecasted_data', alpha=0.7)
-        
-        plt.title('Comparaison data réel et forecasted')
+        plt.figure(figsize=(12,8))
+        plt.plot(self.data["Forecasted Price"], label="Forecasted Price", color="blue")
+        plt.plot(self.data["Log Price"], label = "Real Price", color="red")
+        plt.title(self)
         plt.xlabel("Date")
-        plt.xticks(rotation=45)
         plt.ylabel("Price")
         plt.legend()
-
-        plt.grid(True, alpha = 0.7)
+        plt.grid(True, alpha=0.7)  
         plt.show()
 
     def save(self):
@@ -154,8 +135,6 @@ class BacktestStrategy:
         with pd.ExcelWriter(file_path) as writer:
             self.original_data[["Price", "Log Return", "Efficiency Indicator"]].to_excel(writer, sheet_name='Original', index=True)
             self.mean_forecasted_data.to_excel(writer, sheet_name='Forecast', index=True)
-
-
 
 
     """
@@ -247,30 +226,38 @@ class BacktestStrategy:
 
     """
 
+def test_backtest():
 
+    for file in os.listdir(f"Data\\Forecasting\\Covariance Based"):
+
+        name_file = file.split(".json")[0]
+        size_mat = name_file.split(" ")[-1]
+
+        print(file)
+
+        loaded_f = load_forecast(name_file)
+
+        for tick in loaded_f.keys():
+            # print(tick, end="\n\t")
+
+            for timeframe in loaded_f[tick].keys():
+                # print(timeframe, end="\n\t\t")
+
+                for h_freq in loaded_f[tick][timeframe].keys():
+                    # print(h_freq, end="\n\t\t\t")
+
+                    for horizon, forecast in loaded_f[tick][timeframe][h_freq].items():
+
+                        current_backtest = BacktestStrategy(ticker=tick,
+                                                            timeframe=timeframe,
+                                                            h_freq=h_freq,
+                                                            horizon=horizon,
+                                                            forecast=forecast)
+                        
+                        current_backtest.save_metrics(size_mat)
+                        
 
 
 if __name__ == "__main__":
 
-    loaded_f = load_forecast("test")
-
-    for tick in loaded_f.keys():
-        print(tick, end="\n\t")
-
-        for timeframe in loaded_f[tick].keys():
-            print(timeframe, end="\n\t\t")
-
-            for h_freq in loaded_f[tick][timeframe].keys():
-                print(h_freq, end="\n\t\t\t")
-
-                for horizon, forecast in loaded_f[tick][timeframe][h_freq].items():
-
-                    current_backtest = BacktestStrategy(ticker=tick,
-                                                        timeframe=timeframe,
-                                                        h_freq=h_freq,
-                                                        horizon=horizon,
-                                                        forecast=forecast)
-                    
-                    print(horizon, end="\n\t\t\t\t")
-                    print(f"MSE : {current_backtest.mse}", end="\n\t\t\t\t")
-                    print(f"Hit Ratio : {current_backtest.hit_ratio}", end="\n\t\t\t")
+    test_backtest()
