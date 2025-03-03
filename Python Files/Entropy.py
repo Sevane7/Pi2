@@ -133,7 +133,7 @@ def symbolize_market_info(data : pd.DataFrame, L : int, window_size : int, alpha
 
     threshold = gamma.ppf(1 - alpha, a=k, scale=theta)
 
-    data[f"Symbolize Market info ({(1-alpha)*100} %)"] = data['Efficiency Indicator'].apply(lambda x: x <= threshold)
+    data[f"Symbolize Market info ({(1-alpha)*100} %)"] = data['Efficiency Indicator'].apply(lambda x: int(x <= threshold))
 
 def process_entropy(L : float, window : float, alphas : list):
     
