@@ -6,6 +6,7 @@ from scipy.fft import fft
 from scipy.optimize import minimize
 from scipy.special import gamma
 from BloombergData import BloombergData
+from Entropy import symbolize_market_info
 import warnings
 
 class HurstDistribution(BloombergData):
@@ -237,7 +238,7 @@ def plot_distrib(dir_path : str, ticker : str, freq : list, timeframe : str, sta
 
 def Save_Hurst_Distrib():
 
-    timeframes = ["Daily"]
+    timeframes = ["Daily", "1min"]
       
     for timeframe in timeframes:
 
@@ -247,7 +248,7 @@ def Save_Hurst_Distrib():
 
             print(timeframe, ticker)
 
-            output_file = f"Data\\Data Hurst\\{ticker}.xlsx"
+            output_file = f"Data\\Data Hurst - Original\\{ticker}.xlsx"
             
             df = HurstDistribution(ticker=ticker, timeframe=timeframe)      
 
@@ -258,61 +259,52 @@ def Save_Hurst_Distrib():
                 df.prepared_data.to_excel(writer, sheet_name=timeframe)
 
 
-def treshold_index(root = "Data"):
+def clean_distributions(min_drop = 362, daily_drop = 758):
 
-    res = {}
+    original_dir_path = r"Data\\Data Hurst - Original"
+    output_dir_path = r"Data\\Data Hurst - Final"
+
+
+    for file in os.listdir(original_dir_path):
+
+        print(file.split(".xslx")[0], end="\n\t")
+
+        file_path = os.path.join(original_dir_path, file)
+        output_file_path = os.path.join(output_dir_path, file)
+
     
-    for dir in os.listdir(root):
+        sheets = ["1min", "Daily"]
 
-        tframe = {}
+        dfs : dict[str, pd.DataFrame]= {}  
 
-        dir_path = os.path.join(root, dir)
+        for sheet in sheets:
 
-        for file in os.listdir(dir_path):
+            drop_col : str
+            drop_lign : int 
 
-            file_path = os.path.join(dir_path, file)
-
-            print(file_path)
-
-            df = pd.read_excel(file_path, index_col=0)
-
-            tframe[file.split(".xlsx")[0]] = df.index[500] if len(df) > 499 else df.index[-1]
-        
-        res[dir] = tframe
-
-    return res
-
-
-def clean_distributions(file_path : str, min_drop = 362, daily_drop = 758):
-
-    sheets = ["1min", "Daily"]
-
-    dfs = {}
-
-    for sheet in sheets:
-
-        drop_col : str
-        drop_lign : int 
-
-        if sheet == "1min":
-            drop_col = "Hurst 5min"
-            drop_lign = min_drop
-        
-        else:
-            drop_col = "Hurst 1W"
-            drop_lign = daily_drop
-
-        print(file_path, sheet)
-        
-        df = pd.read_excel(file_path, sheet_name=sheet, index_col=0, engine="openpyxl")
-        df.drop(labels=[drop_col], axis=1, inplace=True)
-        dfs[sheet] = df.iloc[drop_lign:]
-        
-    with pd.ExcelWriter(file_path, engine="xlsxwriter", mode="w") as writer:
-        
-        for sheet, df in dfs.items():
+            if sheet == "1min":
+                drop_col = "Hurst 5min"
+                drop_lign = min_drop
             
-            df.to_excel(writer, sheet_name=sheet)
+            else:
+                drop_col = "Hurst 1W"
+                drop_lign = daily_drop
+
+
+            df = pd.read_excel(file_path, sheet_name=sheet, index_col=0, engine="openpyxl")
+            df.drop(labels=[drop_col], axis=1, inplace=True)
+            dfs[sheet] = df.iloc[drop_lign:]
+
+
+        with pd.ExcelWriter(output_file_path, engine="openpyxl", mode="w") as writer:
+            
+            for sheet, df in dfs.items():
+
+                print(sheet, end="\n\t") if sheet == "1min" else print(sheet)
+
+                symbolize_market_info(df, 3, 5, 0.05)
+                
+                df.to_excel(writer, sheet_name=sheet)
 
 
 
@@ -320,21 +312,15 @@ if __name__ == "__main__":
 
     warnings.filterwarnings("ignore")
 
-    dir_path = "Data\\Data Hurst - Final"
-
     # Save_Hurst_Distrib()
-    # for file in os.listdir(dir_path):
+    clean_distributions()
 
-    #     file_path = os.path.join(dir_path, file)
-        
-    #     clean_distributions(file_path)
+    # daily_frequencies = ["2W", "1M", "3M", "6M", "1Y", "3Y", "5Y"]
+    # minutes_frequencies = ["15min", "30min", "1h", "3h", "6h", "12h"]
 
-    daily_frequencies = ["2W", "1M", "3M", "6M", "1Y", "3Y", "5Y"]
-    minutes_frequencies = ["15min", "30min", "1h", "3h", "6h", "12h"]
+    # daily = "Daily"
+    # minutes = "1min"
+    # ticker = "BTC"
 
-    daily = "Daily"
-    minutes = "1min"
-    ticker = "BTC"
-
-    plot_distrib(dir_path, ticker, minutes_frequencies, minutes)
+    # plot_distrib(dir_path, ticker, minutes_frequencies, minutes)
 

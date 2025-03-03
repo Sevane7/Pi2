@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt 
 from sklearn.metrics import mean_squared_error
 from Forecasting import load_forecast
+from Entropy import symbolize_market_info
 
 class BacktestStrategy:
 
@@ -226,7 +227,7 @@ class BacktestStrategy:
 
     """
 
-def test_backtest():
+def save_metrics_strategy():
 
     for file in os.listdir(f"Data\\Forecasting\\Covariance Based"):
 
@@ -255,9 +256,65 @@ def test_backtest():
                                                             forecast=forecast)
                         
                         current_backtest.save_metrics(size_mat)
-                        
+
+def calculate_vol(series : pd.Series, window : int) :
+    return series.rolling(window).std() * np.sqrt(252)
+
+def calculate_sharpe(series : pd.Series, window : int, risk_free_rate=0):
+    excess_return = series - risk_free_rate
+    rolling_mean = excess_return.rolling(window=window).mean()
+    rolling_std = excess_return.rolling(window=window).std()
+    sharpe_ratio = rolling_mean / rolling_std
+    return sharpe_ratio
+
+def calculate_maxDrawdown(series : pd.Series, window : int):
+    rolling_max = series.rolling(window=window).max()
+    drawdown = series / rolling_max - 1
+    max_drawdown = drawdown.rolling(window=window).min()
+    return max_drawdown
+
+def calculate_Cummul_Return(log_returns : pd.Series):
+    return (1 + log_returns).cumprod() - 1
+        
+
+def process_metrics():
+    
+    folder_path = r"Data\\Data Hurst - Final - Copie"
+
+    excel_files = [f for f in os.listdir(folder_path) if f.endswith(".xlsx")]
+
+    for file in excel_files:
+        print(file)
+        file_path = os.path.join(folder_path, file)
+        
+        # Charger toutes les feuilles
+        xls = pd.ExcelFile(file_path)
+        sheets : dict[str, pd.DataFrame]= {}
+        
+        for sheet_name in xls.sheet_names:
+            df = xls.parse(sheet_name)
+
+            # Ici ajouter les methodes sortino, VaR
+            # df["Price"] = np.exp(df["Log Price"])
+            df["Return"] = df["Price"].diff() / df["Price"]
+            # df["Log Return"] = df["Log Price"].diff()
+            # df["Volatility"] = calculate_vol(df["Log Return"], 252)
+            # df["MaxDrawdown"] = calculate_maxDrawdown(df["Price"], 252)
+            df["Sharpe"] = calculate_sharpe(df["Return"], 252, 0.04)
+
+            sheets[sheet_name] = df.dropna()
+        
+        # Sauvegarder en écrasant
+        with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+            for sheet_name, df in sheets.items():
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+
+
 
 
 if __name__ == "__main__":
 
-    test_backtest()
+    process_metrics()
+
+    pass
