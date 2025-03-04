@@ -227,7 +227,7 @@ class BacktestStrategy:
 
     """
 
-def save_metrics_strategy():
+def save_hit_mse_strategy():
 
     for file in os.listdir(f"Data\\Forecasting\\Covariance Based"):
 
@@ -260,11 +260,10 @@ def save_metrics_strategy():
 def calculate_vol(series : pd.Series, window : int) :
     return series.rolling(window).std() * np.sqrt(252)
 
-def calculate_sharpe(series : pd.Series, window : int, risk_free_rate=0):
-    excess_return = series - risk_free_rate
-    rolling_mean = excess_return.rolling(window=window).mean()
-    rolling_std = excess_return.rolling(window=window).std()
-    sharpe_ratio = rolling_mean / rolling_std
+def calculate_sharpe(df : pd.DataFrame, risk_free_rate=0):
+    rolling_mean = df["Return"]
+    rolling_std = df["Volatility"]
+    sharpe_ratio = (rolling_mean - risk_free_rate) / rolling_std
     return sharpe_ratio
 
 def calculate_maxDrawdown(series : pd.Series, window : int):
@@ -292,15 +291,17 @@ def process_metrics():
         sheets : dict[str, pd.DataFrame]= {}
         
         for sheet_name in xls.sheet_names:
+            print(sheet_name)
+                  
             df = xls.parse(sheet_name)
 
             # Ici ajouter les methodes sortino, VaR
-            # df["Price"] = np.exp(df["Log Price"])
+            df["Price"] = np.exp(df["Log Price"])
             df["Return"] = df["Price"].diff() / df["Price"]
-            # df["Log Return"] = df["Log Price"].diff()
-            # df["Volatility"] = calculate_vol(df["Log Return"], 252)
-            # df["MaxDrawdown"] = calculate_maxDrawdown(df["Price"], 252)
-            df["Sharpe"] = calculate_sharpe(df["Return"], 252, 0.04)
+            df["Log Return"] = df["Log Price"].diff()
+            df["Volatility"] = calculate_vol(df["Log Return"], 252)
+            df["MaxDrawdown"] = calculate_maxDrawdown(df["Price"], 252)
+            df["Sharpe"] = calculate_sharpe(df)
 
             sheets[sheet_name] = df.dropna()
         
@@ -314,7 +315,5 @@ def process_metrics():
 
 
 if __name__ == "__main__":
-
-    process_metrics()
 
     pass
