@@ -79,7 +79,6 @@ class Forecast:
         plt.grid(True, alpha = 0.7)
         plt.show()
 
-
 class MonteCarlo(Forecast):
 
     def __init__(self,
@@ -161,8 +160,6 @@ class MonteCarlo(Forecast):
 
             self.paths[i] = self.fbm_to_price(path)
 
-
-
 class CovarianceBased(Forecast):
 
     def __init__(self,
@@ -172,9 +169,11 @@ class CovarianceBased(Forecast):
                 horizon : int
                 ):
         
-        super().__init__(h_data.loc[:date], h_freq, date, horizon)
+        cut_df = h_data.loc[:date]
 
-        self.t_n = len(self.h_data.loc[:date])
+        super().__init__(cut_df, h_freq, date, horizon)
+
+        self.t_n = len(cut_df)
 
         self.sigma_Y = self.get_sigma_Y()
 
@@ -220,119 +219,256 @@ class CovarianceBased(Forecast):
         return X_t_h_Y.item()
     
 
-def apply_forecast(horizons : list, cov_matrix_length = 50) -> dict[str, dict[str, dict[str, dict[int, dict[pd.Series]]]]]:
-    
-    dir_hurst = r"Data\\Data Hurst - Final"
 
-    ticker_dict : dict[str, dict] = {}
+def single_random_forecast(df : pd.DataFrame,
+                    h : str,
+                    horizon : int,
+                    max_lenght : int) -> pd.DataFrame:
+    """Forecast entre 2 dates aléatoires.
 
-    for file in os.listdir(dir_hurst):
+    Args:
+        df (pd.DataFrame): A une timeframe, dataset d'un asset.
+        h (str): fréquence de hurst utilisée.
+        horizon (int): horizon de forecast.
+        max_lenght (int): maximale taille de la matrice de covariance.
 
-        # print(dir_hurst, file)
+    Returns:
+        pd.DataFrame: Dataset avec le forecast.
+    """
 
-        file_hurst = os.path.join(dir_hurst, file)
+    if len(df) == 0:
+        return None
 
-        ticker = file.split(".xlsx")[0]
-        print(ticker)
+    index_deb = np.random.randint(0, len(df) - max_lenght)
+    index_end = index_deb + max_lenght
 
-        timeframe_dict : dict[str, dict] = {}
+    df_max : pd.DataFrame = df.iloc[index_deb:index_end]
 
-        for timeframe in ["1min", "Daily"]:
-            print(timeframe)
+    dates = df_max.index
 
-            df_init = pd.read_excel(file_hurst, sheet_name=timeframe, index_col=0)
+    df_max[f"Forecast Horizon {horizon}"] = None
 
-            if len(df_init) == 0:
-                break
+    for i, date in enumerate(dates):
 
-            index_deb = np.random.randint(0, len(df_init) - cov_matrix_length)
-            index_end = index_deb + cov_matrix_length
+        if i > 1 and i + horizon < len(df_max):
 
-            h_distrib : pd.DataFrame = df_init.iloc[index_deb:index_end]
-
-            frequencies = h_distrib.columns.to_list()
-            frequencies.remove("Log Price")
-            h_fq = [fq.split("Hurst ")[1] for fq in frequencies]
-
-            hfq_dict : dict[str, dict] = {}
-
-            for h in h_fq:
-
-                horizon_forecast : dict[int, pd.Series] = {}
-
-                for horizon in horizons:
-
-                    dates = h_distrib.index
-
-                    name_serie = f"{ticker} {timeframe} Hurst {h} Horizon {horizon}"
-
-                    forecast = pd.Series(None, index=dates, name=name_serie)
-
-                    for i, date in enumerate(dates):
-
-                        if i > 1 and i + horizon < len(h_distrib):
-
-                            forecastobj = CovarianceBased(h_data=h_distrib,
-                                                        h_freq=h,
-                                                        date=date,
-                                                        horizon=horizon)
-                            
-                            predict_date = dates[i + horizon]
-
-                            try:
-                                forecast.loc[predict_date] = forecastobj.forecasting()
-                            except:
-                                print(forecastobj.sigma_Y)
-                    
-                    horizon_forecast[horizon] = forecast
-
-                hfq_dict[h] = horizon_forecast
+            forecastobj = CovarianceBased(h_data=df_max,
+                                        h_freq=h,
+                                        date=date,
+                                        horizon=horizon)
             
-            timeframe_dict[timeframe] = hfq_dict
+            predict_date = dates[i + horizon]
 
-        ticker_dict[ticker] = timeframe_dict
+            try:
+                df_max.loc[f"Forecast Horizon {horizon}",predict_date] = forecastobj.forecasting()
+            except:
+                continue
+
+    return df_max[["Log Price", f"Forecast Horizon {horizon}"]]
+
+def single_rolling_forecast(df : pd.DataFrame,
+                     h_freq : str,
+                     horizon : int,
+                     max_size_mat : int) -> pd.DataFrame:
+    """Ajoute la colonne Forecast calculée dynamiquement à la Dataframe. 
 
 
-    return ticker_dict
+    Args:
+        df (pd.DataFrame): A une timeframe, dataset avec les données d'un asset.
+        h_freq (str): Fréquence sur laquelle se base le forecast.
+        horizon (int): Horizon de forecast.
+        max_size_mat (int): Taille maximale de la matrice de covariance. Utilisée pour le rolling(window).
+    """
+    
+    res_dict = {key : None for key in df.index}
 
-def save_forecast(name:str, dico : dict):
+    i = 1
+
+    while(i > 0 and i + horizon < len(df)):
+
+        if i > max_size_mat:
+            df_max = df.iloc[i - max_size_mat:]
+        else:
+            df_max = df
+
+        current_date = df.index[i]
+
+        forecast_date = df.index[i + horizon]        
+
+        forecast = CovarianceBased(df_max,h_freq,current_date,horizon).forecasting()
+
+        res_dict[forecast_date] = forecast
+        
+        i += 1
+    
+    df_res = pd.DataFrame.from_dict(res_dict,
+                                    orient="index",
+                                    columns=[f"Forecast Horizon {horizon}"])
+
+    res = pd.concat([df[["Log Price"]], df_res], axis=1)
+  
+    return res
+
+
+def single_forecast(df : pd.DataFrame,
+                    horizons : list,
+                    max_lenght : int,
+                    random_method = False) -> dict[str,dict[int, pd.DataFrame]]:
+    """
+    Applique les méthodes random ou rolling forecast en fonction de random_method.
+
+    Args:
+        df (pd.DataFrame) : Dataset de l'actif.
+        horizon (list): Liste des horizons à forecast.
+        max_lenght (int): maximale lenght pour le forecast.
+        random_method (bool, optional): True utilise random_forecast, sinon Rolling. Defaults equal False.
+
+    Returns:
+        dict[str,dict[int, pd.DataFrame]]: dict[Hurst, [Horizon, Data_Forecast]]
+    """
+
+    frequencies = df.columns.to_list()
+    h_fq = [fq.split("Hurst ")[1] for fq in frequencies if fq.startswith("Hurst")]
+
+
+    hurst_horizon : dict[str, dict] = {h_freq : None for h_freq in h_fq}
+
+    for h in h_fq:
+        print(f"Hurts {h}")
+
+        horizon_df : dict[int, pd.DataFrame] = {horiz : None for horiz in horizons}
+
+        for horiz in horizons:
+
+            print(f"Horizon {horiz}")
+
+            df_forecast = pd.DataFrame(None)
+
+            if random_method:            
+                df_forecast = single_random_forecast(df, h, horiz, max_lenght)
+                            
+            else:
+                df_forecast = single_rolling_forecast(df, h, horiz, max_lenght)
+            
+            horizon_df[horiz] = df_forecast
+        
+        hurst_horizon[h] = horizon_df
+    
+    return hurst_horizon
+
+
+def process_forecast(horizons : list, size_mat : list):
+
+    dir_data = r"Data\\Final Data - Copie"
+    
+    dir_output = r"Data\\Forecasting\\Covariance Based\\Single Forecast"
+
+    files = [f for f in os.listdir(dir_data) if f.endswith(".xlsx")]
+
+    timeframes = ["Daily", "1min"]
+
+    for tframe in timeframes:
+
+        print(tframe)
+
+        tframe_output = os.path.join(dir_output, tframe)
+
+        asset_dict : dict[str, dict] = {}
+
+        for file in files:
+            
+            print(file)
+            
+            data_file_path = os.path.join(dir_data, file)
+
+            df = pd.read_excel(data_file_path, sheet_name=tframe, index_col=0)
+
+            size_frcst : dict[int, dict] = {}
+
+            for i in size_mat:           
+
+                print(f"Covariance Matrix Size : {i}")
+                
+                frcst = single_forecast(df, horizons, i)
+
+                size_frcst[i] = frcst
+
+            
+            asset_dict[file] = size_frcst
+
+            file = file.split(".xlsx")[0]
+
+            output_file = os.path.join(tframe_output, file) + ".json"
+
+            save_forecast(output_file, asset_dict)
+                
+
+
+
+
+def save_forecast(output_path : str, dico : dict):
 
     def convert_series(obj):
-        if isinstance(obj, pd.Series):
-            return {
-                "index": obj.index.astype(str).tolist(),  # Convertir DateTimeIndex en str
-                "values": obj.tolist()  # Garder les valeurs en liste
-            }
+
+        if isinstance(obj, pd.DataFrame):
+            obj.index = obj.index.astype(str).to_list()
+            return obj.dropna().to_dict(orient="split")
+        
         if isinstance(obj, dict):
             return {k: convert_series(v) for k, v in obj.items()}  # Récursivité
+        
         return obj  # Retourner inchangé si ce n'est pas une Series
 
-    with open(rf"Data\\Forecasting\\Covariance Based\\{name}.json", mode="w") as file:
+    with open(output_path, mode="w") as file:
         json.dump(convert_series(dico), file)
 
-def load_forecast(name:str):
-    with open(rf"Data\\Forecasting\\Covariance Based\\{name}.json", mode="r") as f:
+def load_forecast(path_file:str) -> dict:
+    with open(path_file, mode="r") as f:
         loaded_data = json.load(f)
 
     # Fonction pour reconstruire les pd.Series
     def reconstruct_series(obj):
-        if isinstance(obj, dict) and "index" in obj and "values" in obj:
-            index = pd.to_datetime(obj["index"])  # Reconversion des chaînes en DateTimeIndex
-            return pd.Series(obj["values"], index=index)
         if isinstance(obj, dict):
-            return {k: reconstruct_series(v) for k, v in obj.items()}  # Récursivité
-        return obj
+            if "columns" in obj and "index" in obj and "data" in obj:
+                # Reconstruction d'un DataFrame
+                return pd.DataFrame(data=obj["data"], index=pd.to_datetime(obj["index"]), columns=obj["columns"])
+            elif "index" in obj and "values" in obj:
+                # Reconstruction d'une Series
+                return pd.Series(data=obj["values"], index=pd.to_datetime(obj["index"]))
+            else:
+                # Récursivité pour les dictionnaires imbriqués
+                return {k: reconstruct_series(v) for k, v in obj.items()}
+        return obj  # Retour inchangé si ce n'est pas un dict
     
     return reconstruct_series(loaded_data)
 
 
+
+
+
 if __name__ == "__main__":
 
-    horizons = [i for i in range(3, 13)]
+    def test_forecast():
 
-    for i in range(40, 110, 10):
-        print(f"Covariance Matrix Size : {i}", end="\n\n")
-        frcst = apply_forecast(horizons=horizons, cov_matrix_length=i)
+        sizeMat_horizons = {
+            10 : [1, 2],
+            30 : [1, 2, 3],
+            50 : [1, 3, 5]
+        }
 
-        save_forecast(f"Covariance Based Size {i}", frcst)
-        print("\n")
+        for horizons in sizeMat_horizons.values():
+            process_forecast(horizons=horizons, size_mat=list(sizeMat_horizons.keys()))
+
+    def test_load():
+
+        dir_forecast_path = r"Data\\Forecasting\\Covariance Based\\Single Forecast\\Daily"
+
+        files = [i for i in os.listdir(dir_forecast_path) if i.endswith(".json")]
+
+        for file in files:
+            file_path = os.path.join(dir_forecast_path, file)
+            print(load_forecast(file_path))
+
+    test_forecast()
+
+    pass

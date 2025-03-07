@@ -141,7 +141,7 @@ def process_entropy(L : float, window : float, alphas : list):
 
     excel_files = [f for f in os.listdir(folder_path) if f.endswith(".xlsx")]
 
-    for file in excel_files[13:18]:  # Ghali : [-5:]
+    for file in excel_files:
         print(file)
         file_path = os.path.join(folder_path, file)
         
@@ -153,8 +153,8 @@ def process_entropy(L : float, window : float, alphas : list):
             df = xls.parse(sheet_name)
             print(sheet_name)
 
-            # if "Efficiency Indicator" in df.columns:
-            #     df.drop(labels=["Efficiency Indicator"], axis=1, inplace=True)            
+            if "Efficiency Indicator" in df.columns:
+                df.drop(labels=["Efficiency Indicator"], axis=1, inplace=True)            
 
             for a in alphas:
                 print(a)
@@ -171,10 +171,9 @@ def process_entropy(L : float, window : float, alphas : list):
 
 if __name__ == "__main__":
 
-    L = 3
-    window = 252
-    alphas = [i/100 for i in range(1, 6)]
-    process_entropy(L, window, alphas)
-
+    # L = 3
+    # window = 252
+    # alphas = [i/100 for i in range(1, 6)]
+    # process_entropy(L, window, alphas)
 
     pass

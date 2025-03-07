@@ -4,7 +4,6 @@ import pandas as pd
 import matplotlib.pyplot as plt 
 from sklearn.metrics import mean_squared_error
 from Forecasting import load_forecast
-from Entropy import symbolize_market_info
 
 class BacktestStrategy:
 
@@ -257,11 +256,12 @@ def save_hit_mse_strategy():
                         
                         current_backtest.save_metrics(size_mat)
 
+
 def calculate_vol(series : pd.Series, window : int) :
     return series.rolling(window).std() * np.sqrt(252)
 
-def calculate_sharpe(df : pd.DataFrame, risk_free_rate=0):
-    rolling_mean = df["Return"]
+def calculate_sharpe(df : pd.DataFrame, window:int, risk_free_rate=0):
+    rolling_mean = df["Return"].rolling(window).sum()
     rolling_std = df["Volatility"]
     sharpe_ratio = (rolling_mean - risk_free_rate) / rolling_std
     return sharpe_ratio
@@ -276,9 +276,7 @@ def calculate_Cummul_Return(log_returns : pd.Series):
     return (1 + log_returns).cumprod() - 1
         
 
-def process_metrics():
-    
-    folder_path = r"Data\\Data Hurst - Final - Copie"
+def process_metrics(folder_path : str):
 
     excel_files = [f for f in os.listdir(folder_path) if f.endswith(".xlsx")]
 
@@ -301,7 +299,7 @@ def process_metrics():
             df["Log Return"] = df["Log Price"].diff()
             df["Volatility"] = calculate_vol(df["Log Return"], 252)
             df["MaxDrawdown"] = calculate_maxDrawdown(df["Price"], 252)
-            df["Sharpe"] = calculate_sharpe(df)
+            df["Sharpe"] = calculate_sharpe(df,252)
 
             sheets[sheet_name] = df.dropna()
         
@@ -313,7 +311,10 @@ def process_metrics():
 
 
 
-
 if __name__ == "__main__":
+
+    folder_path = r"Data\\Final Data - Copie"
+
+    process_metrics(folder_path)
 
     pass
