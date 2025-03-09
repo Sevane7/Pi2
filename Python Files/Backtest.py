@@ -4,6 +4,8 @@ import pandas as pd
 import matplotlib.pyplot as plt 
 from sklearn.metrics import mean_squared_error
 from Forecasting import load_forecast
+from Metrics import *
+from typing import Union
 
 class BacktestStrategy:
 
@@ -12,7 +14,7 @@ class BacktestStrategy:
                  timeframe : str,
                  h_freq : str,
                  horizon : int,
-                 forecast : pd.Series,
+                 forecast : Union[pd.DataFrame, pd.Series],
                  ):
         
         # First attributs
@@ -21,10 +23,14 @@ class BacktestStrategy:
         self.h_freq = h_freq
         self.horizon = horizon
 
-        self.data : pd.DataFrame = self.get_data(forecast)   
+        if isinstance(forecast, pd.Series):
+            self.data : pd.DataFrame = self.get_data(forecast)
+        elif isinstance(forecast, pd.DataFrame):
+            self.data = forecast
+
 
         # Metrics
-        self.hit_ratio : float =self.compute_Hit_Ratio()
+        self.hit_ratio : float = self.compute_Hit_Ratio()
         self.mse : float = self.compute_MSE()
 
 
@@ -51,7 +57,7 @@ class BacktestStrategy:
         
         y_true = self.data["Log Price"].to_list()
 
-        y_pred = self.data["Forecasted Price"].to_list()
+        y_pred = self.data["Forecast"].to_list()
 
         return mean_squared_error(y_true, y_pred)
     
@@ -59,7 +65,7 @@ class BacktestStrategy:
 
         y_true = self.data["Log Price"].to_numpy()
 
-        y_pred = self.data["Forecasted Price"].to_numpy()
+        y_pred = self.data["Forecast"].to_numpy()
         
         real_direction = np.sign(np.diff(y_true.flatten()))  
         forecast_direction = np.sign(np.diff(y_pred.flatten()))  
@@ -77,7 +83,7 @@ class BacktestStrategy:
     def save_metrics(self, size_matrix : str):
 
         # Verifier si dossier et fichier existent    
-        file_path = f"Data\\Forecasting\\Metrics\\Covariance Based Hit ratio and MSE.xlsx"
+        file_path = r"Data\\Forecasting\\Metrics\\Covariance Based Hit ratio and MSE.xlsx"
 
         new_data = pd.DataFrame({
             "Size Matrix" : [size_matrix],
@@ -114,207 +120,132 @@ class BacktestStrategy:
         plt.grid(True, alpha=0.7)  
         plt.show()
 
-    def save(self):
-
-        dirpath = f"Data\\Forecasting\\{self.hurst_fq}"
-
-        os.makedirs(dirpath, exist_ok=True)
 
 
-        file_path = os.path.join(dirpath, f"{self}.xlsx")
+def process_backtest(dir_forecast : str) -> None:
+    """Effectue un backtest de la stratégie en calculant le Hit Ratio et MSE sur l'ensemble des forecast.  
+    Enregistre dans un excel au chemin "Data\\Forecasting\\Metrics\\Covariance Based.xlsx"
 
-        # self.mean_forecasted_data.to_excel(file_path, sheet_name="Forcast", index=True)
-        # self.original_data.to_excel(file_path, sheet_name='Original', index=True)
-
-        # final_orignal = pd.concat([original_data, original_returns], axis=1)
-        # final_forecasted = pd.concat([forecasted_data, forecasted_returns], axis=1)
-        # final_orignal = final_orignal[['Price', 'Returns', 'Efficiency_Indicator']]
-        # final_forecasted = final_forecasted[['Price', 'Returns', 'Efficiency_Indicator']]
-
-        # # Variante 1 de l'écriture (2 feuilles dans meme fichier)
-        with pd.ExcelWriter(file_path) as writer:
-            self.original_data[["Price", "Log Return", "Efficiency Indicator"]].to_excel(writer, sheet_name='Original', index=True)
-            self.mean_forecasted_data.to_excel(writer, sheet_name='Forecast', index=True)
-
-
+    Args:
+        dir_forecast (str): chemin du dictionnaire contenant les forecast.
     """
-        # Running backtest
-    def backtest(self):
-        Forcast pour toute la période donnée.  
-        Initialise les attributs hurst_fq, horizon, generation, et les data (originale, forcast, mean_forcast).  
+
+    files = [f for f in os.listdir(dir_forecast) if f.endswith(".json")]
+    timeframe = "Daily"
+
+    metrics : pd.DataFrame = None
+
+    for file in files:
+        print(file)
+
+        ticker = file.split(".json")[0]
+
+
+        file_path = os.path.join(dir_forecast, file)
+
+        dic_forecast = load_forecast(file_path)
+
         
+        for size_mat in dic_forecast.keys():
+            for h_fq in dic_forecast[size_mat].keys():
+                for horizon in dic_forecast[size_mat][h_fq].keys():
+                    df_forecast : pd.DataFrame = dic_forecast[size_mat][h_fq][horizon]
+                    try:
+                        backtestobj = BacktestStrategy(ticker=ticker,
+                                                    timeframe=timeframe,
+                                                    h_freq=h_fq,
+                                                    horizon=horizon,
+                                                    forecast=df_forecast)
 
-        for h_freq, horizon_gene in self.combi_generations.items():
+                        new_data = pd.DataFrame({
+                            "Size Matrix" : [size_mat],
+                            "Asset" : [ticker],
+                            "Timeframe" : [timeframe],
+                            "Hurst Frequence" : [h_fq],
+                            "Horizon" : [horizon],
+                            "From" : [backtestobj.data.index[0]],
+                            "To" : [backtestobj.data.index[-1]],
+                            "Hit Ratio" : [backtestobj.hit_ratio],
+                            "MSE" : [backtestobj.mse]
+                        })
 
-            self.hurst_fq = h_freq
+                        metrics = pd.concat([new_data, metrics], axis = 0)
 
-            for horiz, gene in horizon_gene.items():
+                    except Exception as e:
+                        print(e)
+                        print(size_mat, h_fq, horizon)
 
-                self.horizon = horiz
-
-                self.generation = gene
-                
-                self.H_distrib = self.hurstobj.get_changes_Hurst(self.hurst_fq).dropna()
-
-                print(datetime.now().strftime("%H:%M:%S"))
-                print(f"Running {self}")
-                
-                for date, h in self.H_distrib.items():
-
-                    forecast = Forecast(self.hurstobj,
-                                    self.hurst_fq,
-                                    date,
-                                    self.generation,
-                                    self.horizon,
-                                    h)
+        with pd.ExcelWriter(r"Data\\Forecasting\\Metrics\\Covariance Based.xlsx") as xls:
+        
+            metrics.to_excel(xls, index=False)
                     
-                    self.filling_data(forecast)
-                               
-                self.compute_mean_forecated_data()
-                
-                self.save()
-                
-                self.hit_ratio = self.compute_Hit_Ratio()
 
-                self.mse = self.compute_MSE()
+def get_accurate_asset(file_path : str) -> pd.DataFrame:
 
-                self.save_metrics(forecast)
+    df_metrics = pd.read_excel(file_path)
 
-    def simple_backtest(self, h_fq, N_generations, horizons):
-        
-        self.hurst_fq = h_fq
-        self.H_distrib = self.hurstobj.get_changes_Hurst(self.hurst_fq).dropna()
-        self.horizon = horizons
-        self.generation = N_generations
-                
-        for date, h in self.H_distrib.items():
+    accurate_assets : pd.DataFrame = None
 
-            forecast = Forecast(self.hurstobj,
-                            self.hurst_fq,
-                            date,
-                            self.generation,
-                            self.horizon,
-                            h)
-                    
-            self.filling_data(forecast)
-                                
-        self.compute_mean_forecated_data()
+    assets = df_metrics["Asset"].value_counts().index.to_list()
 
-        self.save()
-        
-        # self.hit_ratio = self.compute_Hit_Ratio()
+    for asset in assets:
+        df_asset : pd.DataFrame = df_metrics[df_metrics["Asset"] == asset]
 
-        # self.mse = self.compute_MSE()
+        best_asset = df_asset.sort_values(["Hit Ratio"], ascending=False).iloc[0]
 
-    def filling_data(self, forecast) -> None:
+        if(best_asset["Hit Ratio"] >= 0.5):
+            accurate_assets = pd.concat([accurate_assets, best_asset.to_frame().T], ignore_index=True)
 
-        forecast.forcasting(self.hurst_fq)
+    return accurate_assets
 
-        self.original_data = pd.concat([self.original_data, self.get_compare_data(forecast)], axis=0)
-        
-        self.forecasted_data = pd.concat([self.forecasted_data,forecast.paths], axis=0)
+
+def join_forecast(row : pd.Series, dir_dico : str, dir_data : str):
+
+
+    path_data = os.path.join(dir_data, row["Asset"]  + ".xlsx")
+    path_dico = os.path.join(dir_dico, row["Asset"]  + ".json")
+
+    data : pd.DataFrame = pd.read_excel(path_data, sheet_name=row["Timeframe"], index_col=0)
+    dico : dict[int, dict[str, dict[int, pd.DataFrame]]] = load_forecast(path_dico)
+
+
+    df_forecast = dico[str(row["Size Matrix"])][row["Hurst Frequence"]][str(row["Horizon"])]
     
-    def compute_mean_forecated_data(self):
+    res = data.merge(df_forecast["Forecast"], left_index=True, right_index=True, how="inner")
 
-        self.mean_forecasted_data = pd.DataFrame(self.forecasted_data.mean(axis=1), columns=["Price"])
+    hurst_cols = [c for c in data.columns if c.startswith("Hurst")]
+    hurst_cols.remove(f"Hurst {row['Hurst Frequence']}")
 
-        self.mean_forecasted_data["Log Return"] = np.log(self.mean_forecasted_data["Price"] / self.mean_forecasted_data["Price"].shift())
-        
-        # self.mean_forecasted_data["Log Return"].loc[self.mean_forecasted_data["Log Return"].reset_index().index % self.horizon == 0] = np.nan
-
-        # compute_entropy_indicator(self.mean_forecasted_data, 5, 2)
-
-    """
-
-def save_hit_mse_strategy():
-
-    for file in os.listdir(f"Data\\Forecasting\\Covariance Based"):
-
-        name_file = file.split(".json")[0]
-        size_mat = name_file.split(" ")[-1]
-
-        print(file)
-
-        loaded_f = load_forecast(name_file)
-
-        for tick in loaded_f.keys():
-            # print(tick, end="\n\t")
-
-            for timeframe in loaded_f[tick].keys():
-                # print(timeframe, end="\n\t\t")
-
-                for h_freq in loaded_f[tick][timeframe].keys():
-                    # print(h_freq, end="\n\t\t\t")
-
-                    for horizon, forecast in loaded_f[tick][timeframe][h_freq].items():
-
-                        current_backtest = BacktestStrategy(ticker=tick,
-                                                            timeframe=timeframe,
-                                                            h_freq=h_freq,
-                                                            horizon=horizon,
-                                                            forecast=forecast)
-                        
-                        current_backtest.save_metrics(size_mat)
-
-
-def calculate_vol(series : pd.Series, window : int) :
-    return series.rolling(window).std() * np.sqrt(252)
-
-def calculate_sharpe(df : pd.DataFrame, window:int, risk_free_rate=0):
-    rolling_mean = df["Return"].rolling(window).sum()
-    rolling_std = df["Volatility"]
-    sharpe_ratio = (rolling_mean - risk_free_rate) / rolling_std
-    return sharpe_ratio
-
-def calculate_maxDrawdown(series : pd.Series, window : int):
-    rolling_max = series.rolling(window=window).max()
-    drawdown = series / rolling_max - 1
-    max_drawdown = drawdown.rolling(window=window).min()
-    return max_drawdown
-
-def calculate_Cummul_Return(log_returns : pd.Series):
-    return (1 + log_returns).cumprod() - 1
-        
-
-def process_metrics(folder_path : str):
-
-    excel_files = [f for f in os.listdir(folder_path) if f.endswith(".xlsx")]
-
-    for file in excel_files:
-        print(file)
-        file_path = os.path.join(folder_path, file)
-        
-        # Charger toutes les feuilles
-        xls = pd.ExcelFile(file_path)
-        sheets : dict[str, pd.DataFrame]= {}
-        
-        for sheet_name in xls.sheet_names:
-            print(sheet_name)
-                  
-            df = xls.parse(sheet_name)
-
-            # Ici ajouter les methodes sortino, VaR
-            df["Price"] = np.exp(df["Log Price"])
-            df["Return"] = df["Price"].diff() / df["Price"]
-            df["Log Return"] = df["Log Price"].diff()
-            df["Volatility"] = calculate_vol(df["Log Return"], 252)
-            df["MaxDrawdown"] = calculate_maxDrawdown(df["Price"], 252)
-            df["Sharpe"] = calculate_sharpe(df,252)
-
-            sheets[sheet_name] = df.dropna()
-        
-        # Sauvegarder en écrasant
-        with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
-            for sheet_name, df in sheets.items():
-                df.to_excel(writer, sheet_name=sheet_name, index=False)
-
+    return res.drop(columns=hurst_cols) 
 
 
 
 if __name__ == "__main__":
 
-    folder_path = r"Data\\Final Data - Copie"
+    dir_forecast = r"Data\\Forecasting\\Covariance Based\\Single Forecast\\Daily - Copie"
 
-    process_metrics(folder_path)
+    def asset_to_compute_metrix():
+
+        dir_data = r"Data\\Final Data - Copie"
+        file_metrics = r"Data\\Forecasting\\Metrics\\Covariance Based.xlsx"
+
+
+        # process_backtest(dir_forecast)
+
+        df : pd.DataFrame = get_accurate_asset(file_metrics)
+
+        for i in df.index:
+
+            row = df.loc[i]
+
+            print(row["Asset"])
+
+            df_with_forecast = join_forecast(row=row, dir_data=dir_data, dir_dico=dir_forecast)
+
+            df_with_forecast.to_excel(rf"Data\\Accurate Files\\{row["Asset"]}.xlsx", index=True)
+
+    # process_backtest(dir_forecast=dir_forecast)
+
+    # asset_to_compute_metrix()
 
     pass

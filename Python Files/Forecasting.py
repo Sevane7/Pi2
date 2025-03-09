@@ -7,6 +7,9 @@ from abc import abstractmethod
 import json
 
 class Forecast:
+    """
+    Objet permettant d'effectuer un forecast avec la distribution de l'exposant de Hurst sur les Log Price d'un actif. 
+    """
 
     def __init__(self,
                 h_data : pd.DataFrame,
@@ -14,6 +17,8 @@ class Forecast:
                 date : str,
                 horizon : int):
         
+        """
+        """
         # Data 
         self.h_data = h_data
         self.h_freq = h_freq
@@ -26,29 +31,41 @@ class Forecast:
 
 
         # Forcasting 
-        self.horizon = horizon + 1
+        self.horizon = horizon
         self.indexes = self.get_index_from_S0_to_Horizon()
 
-
-    def __str__(self):
-        
-        start_format = pd.to_datetime(self.start).strftime("%A %d %B %Y")
-        end_format = pd.to_datetime(str(self.indexes[-1])).strftime("%A %d %B %Y")
-
-        return f"{self.ticker} From {start_format} To {end_format} - Generations {self.generation} - Horizon {self.horizon - 1}"
-
-
     # Get methods 
-    def get_Hurst(self):
+    def get_Hurst(self) -> float:
+        """Retourne le Hurst de notre actif correspondant à la date et à la fréquence donnée.
+
+        Returns:
+            float: Hurst Exponent.
+        """
         return self.h_data.loc[self.S0_index, f"Hurst {self.h_freq}"]
 
-    def get_S0(self):       
+    def get_S0(self) -> float:
+        """
+        Retourne le Log Price initial au moment de notre forecast.
+
+        Returns:
+            float: Log Price
+        """ 
         return self.h_data.loc[self.S0_index, "Log Price"]
     
-    def get_vol(self):
+    def get_vol(self) -> float:
+        """Retourne la volatilité historique des Log Price annualisé avec le Hurst Exponent.
+
+        Returns:
+            float: Volatilité.
+        """
         return np.std(self.h_data["Log Price"]) * np.float_power(252, self.H)
 
     def get_index_from_S0_to_Horizon(self) -> list:
+        """Retrouve les indices correspondant entre S0 et le Forecast.
+
+        Returns:
+            list: index entre S0 et S0 + horizon
+        """
 
         df_after_s0 =  self.h_data.loc[self.S0_index:]
 
@@ -61,16 +78,19 @@ class Forecast:
 
 
     @abstractmethod
-    def forcasting(self):
+    def forecasting(self):
         pass
 
     # Plot methods
-    def plot_forcast(self, df : pd.DataFrame):
+    def plot_forcast(self, df : pd.DataFrame, forecast_cols : list):
 
         plt.figure(figsize=(13,7))
 
-        for c in df.columns:
-            plt.plot(df[c], c=np.random.rand(3,))
+        plt.plot(df["Log Price"], c="black")
+
+        for c in forecast_cols:
+            if c in df.columns:
+                plt.plot(df[c], c=np.random.rand(3,))
         
         plt.title(self)
         plt.xlabel("Date")
@@ -79,23 +99,31 @@ class Forecast:
         plt.grid(True, alpha = 0.7)
         plt.show()
 
+
 class MonteCarlo(Forecast):
+    """Hérite de Forecast.  
+    Cette classe permet de simuler un grand nombre de fBm pour retourner le fbm moyen.  
+    Mathématiquement cette méthode ne peut pas être utilisé car le forecast final sera S0 etant donné que l'espérance de nos v.a. est de 0.
+
+    Args:
+        Forecast (class)
+    """
 
     def __init__(self,
                 h_data : pd.DataFrame,
                 h_freq : str,
                 date : str,
                 horizon : int,
-                genereation : int):
+                generations = 10000):
         
         super().__init__(h_data, h_freq, date, horizon)
         
-        self.generation = genereation
+        self.generation = generations
 
         self.paths = pd.DataFrame(index=self.indexes)
 
 
-    def generate_fbm_cholesky(self, epsilon = 1e-10) -> np.ndarray :
+    def simulate_fbm_cholesky(self, epsilon = 1e-10) -> np.ndarray :
         """Generate a fractionnal Brownian Motion with cholesky method.
 
         Args:
@@ -138,29 +166,26 @@ class MonteCarlo(Forecast):
         
         return fbm_sample
 
-    def fbm_to_price(self, path : np.ndarray) -> np.ndarray:
-        """
-        Transforms a fractional Brownian motion sample into a price series
-        starting at S0 with exponential (multiplicative) variations.
+    def forecasting(self) -> np.ndarray:
+        """Simule des fbm transformés avec l'odre de grandeur des prix correspondant.
 
-        fbm_sample: fBm values (starting around 0)
-        S0        : desired initial price
-        alpha     : volatility scale (or intensity of variations)
+        Returns:
+            np.ndarray: Chemin moyen de simulations.
         """
-        return self.S0 * np.exp(self.vol * (path - path[0]))   
-
-    def forcasting(self):
-        """Pour l'horizon donné avec le nombre de génération.  
-        Utilise une génération d'un fbm avec Cholesky.  
-        """
-
         for i in range(self.generation):
 
-            path = self.generate_fbm_cholesky()
+            path = self.simulate_fbm_cholesky()
 
-            self.paths[i] = self.fbm_to_price(path)
+            self.paths[i] = self.s0 * np.exp(self.vol * (path - path[0]))
 
+        return np.mean(self.paths, axis=0)
+
+    
 class CovarianceBased(Forecast):
+    """
+    Hérite de l'objet Forecast.  
+    Permet le forecast grace à la matrice de covariance des Log Price et des propriétés de dépendance des fBm.   
+    """
 
     def __init__(self,
                 h_data : pd.DataFrame,
@@ -169,9 +194,11 @@ class CovarianceBased(Forecast):
                 horizon : int
                 ):
         
-        cut_df = h_data.loc[:date]
+        cut_df = h_data.loc[:date] # Conserver la matrice avant la date à partir de laquelle on veut forecaster
 
         super().__init__(cut_df, h_freq, date, horizon)
+
+        # Attributs nécéssaires pour le forecast
 
         self.t_n = len(cut_df)
 
@@ -181,6 +208,18 @@ class CovarianceBased(Forecast):
 
 
     def get_cov_fbm(self, sigma : float, s : int, t: int, hurst : float) -> float: 
+        """
+        Définition du fBm. Covariance entre deux v.a. s et t avec s < t
+
+        Args:
+            sigma (float): Volatilité.
+            s (int): s < t
+            t (int): t > s
+            hurst (float): Hurst exponent
+
+        Returns:
+            float: Covariance entre Xs et Xt : E[XsXt]
+        """
         return (
             (pow(sigma, 2) / 2) * (
             np.abs(s)**(2*hurst) + np.abs(t)**(2*hurst) - np.abs(s-t)**(2*hurst))
@@ -188,6 +227,12 @@ class CovarianceBased(Forecast):
 
 
     def get_sigma_Y(self) -> np.ndarray:
+        """Matrice de covariance de notre objet.  
+        Utilise get_cov_fbm
+
+        Returns:
+            np.ndarray: Tableau à 2 dimensions.
+        """
 
         res = np.ndarray((self.t_n, self.t_n))
 
@@ -199,6 +244,12 @@ class CovarianceBased(Forecast):
 
 
     def get_sigma_XY(self) -> np.ndarray:
+        """Calcule le tableau de covariance entre X_t et X_t+h.  
+        Utilise get_cov_fbm.
+
+        Returns:
+            np.ndarray: Tableau 1 dimension.
+        """
 
         t_plus_h = self.t_n + self.horizon
 
@@ -206,10 +257,23 @@ class CovarianceBased(Forecast):
 
 
     def get_sigma_X(self, t= 0) -> float:
+        """Permet de calculer le MSE.
+
+        Args:
+            t (int, optional): Defaults to 0.
+
+        Returns:
+            float.
+        """
         return (pow(self.vol, 2) / 2) * (2 * np.abs(t + self.horizon)**(2*self.H)) 
 
 
     def forecasting(self) -> float:
+        """Calcule matriciel entre sigmaXT.T, sigmaY^^(-1), Log Price
+
+        Returns:
+            float: Forecast d'horizon h
+        """
         
         xy = self.sigma_XY.reshape(-1,1)
         Y = self.h_data["Log Price"].to_numpy().reshape(-1,1)
@@ -303,17 +367,18 @@ def single_rolling_forecast(df : pd.DataFrame,
     
     df_res = pd.DataFrame.from_dict(res_dict,
                                     orient="index",
-                                    columns=[f"Forecast Horizon {horizon}"])
+                                    columns=["Forecast"])
 
     res = pd.concat([df[["Log Price"]], df_res], axis=1)
   
     return res
 
 
+
 def single_forecast(df : pd.DataFrame,
                     horizons : list,
                     max_lenght : int,
-                    random_method = False) -> dict[str,dict[int, pd.DataFrame]]:
+                    rollong_method = True) -> dict[str,dict[int, pd.DataFrame]]:
     """
     Applique les méthodes random ou rolling forecast en fonction de random_method.
 
@@ -342,13 +407,13 @@ def single_forecast(df : pd.DataFrame,
 
             print(f"Horizon {horiz}")
 
-            df_forecast = pd.DataFrame(None)
+            df_forecast : pd.DataFrame = None
 
-            if random_method:            
-                df_forecast = single_random_forecast(df, h, horiz, max_lenght)
+            if rollong_method:            
+                df_forecast = single_rolling_forecast(df, h, horiz, max_lenght)
                             
             else:
-                df_forecast = single_rolling_forecast(df, h, horiz, max_lenght)
+                df_forecast = single_random_forecast(df, h, horiz, max_lenght)
             
             horizon_df[horiz] = df_forecast
         
@@ -356,14 +421,20 @@ def single_forecast(df : pd.DataFrame,
     
     return hurst_horizon
 
+def process_forecast(size_mat_horizons : dict[int, list], dir_data : str, dir_output : str):
+    """Parcourt le fichier avec les fichiers Excels contenant les feuilles au nom de chaque timeframe, avec comme colonnes les Log Price et les distributions de Hurst.  
+    Enregistre tous les forecast au chemin spécifié.
 
-def process_forecast(horizons : list, size_mat : list):
 
-    dir_data = r"Data\\Final Data - Copie"
-    
-    dir_output = r"Data\\Forecasting\\Covariance Based\\Single Forecast"
+    Args:
+        size_mat_horizons (dict[int, list]): Associations de taille de matrice de covariance maximale et d'horizons de forecast.
+        dir_data (str): Chemin des du dossiers contenant les données.
+        dir_output (str): Chemin du dossier d'enregistrement.
+    """
 
     files = [f for f in os.listdir(dir_data) if f.endswith(".xlsx")]
+
+    
 
     timeframes = ["Daily", "1min"]
 
@@ -373,19 +444,38 @@ def process_forecast(horizons : list, size_mat : list):
 
         tframe_output = os.path.join(dir_output, tframe)
 
-        asset_dict : dict[str, dict] = {}
+        # asset_dict : dict[str, dict] = {}
 
         for file in files:
-            
+
+            file_json = file.split(".xlsx")[0] + ".json"
+
+
+            # Ne pas recalculer si le fichier existe déjà
+            if(file_json in os.listdir(tframe_output)):
+                print(f"{file_json} déjà calculé.")
+                continue
+
             print(file)
             
             data_file_path = os.path.join(dir_data, file)
 
             df = pd.read_excel(data_file_path, sheet_name=tframe, index_col=0)
 
+            # Réduire le forecast à 6000 points de données
+            if(tframe=="1min"):
+                try:
+                    df=df.tail(6000)
+                except NameError as e:
+                    print(file, " : Non exécuté.")
+                    print(e)
+                    continue
+
+
+            # Dictionnaire à remplir et à enregistrer
             size_frcst : dict[int, dict] = {}
 
-            for i in size_mat:           
+            for i, horizons in size_mat_horizons.items():           
 
                 print(f"Covariance Matrix Size : {i}")
                 
@@ -394,61 +484,106 @@ def process_forecast(horizons : list, size_mat : list):
                 size_frcst[i] = frcst
 
             
-            asset_dict[file] = size_frcst
+            # asset_dict[file] = size_frcst 
 
-            file = file.split(".xlsx")[0]
+            output_file = os.path.join(tframe_output, file_json)   
 
-            output_file = os.path.join(tframe_output, file) + ".json"
-
-            save_forecast(output_file, asset_dict)
+            save_forecast(output_file, size_frcst)
                 
 
 
+def save_forecast(output_path : str, dico : dict) -> None:
+    """Enregistre le dictionnaire conentant une dataframe au chemin spécifié.
 
+    Args:
+        output_path (str): chemin du fichier.
+        dico (dict): dictionnaire à enregistrer.
+    """
 
-def save_forecast(output_path : str, dico : dict):
+    def convert_to_dict(obj) -> dict:
+        """Méthode récursive pour détecter une DataFrame et la changer en dictionnaire.
 
-    def convert_series(obj):
+        Returns:
+            _type_: _description_
+        """
 
         if isinstance(obj, pd.DataFrame):
-            obj.index = obj.index.astype(str).to_list()
+            obj.index = obj.index.astype(str).to_list() # On change les index en string pour l'enregistrement.
             return obj.dropna().to_dict(orient="split")
         
         if isinstance(obj, dict):
-            return {k: convert_series(v) for k, v in obj.items()}  # Récursivité
+            return {k: convert_to_dict(v) for k, v in obj.items()}  # Récursivité
         
         return obj  # Retourner inchangé si ce n'est pas une Series
 
     with open(output_path, mode="w") as file:
-        json.dump(convert_series(dico), file)
+        json.dump(convert_to_dict(dico), file)
 
-def load_forecast(path_file:str) -> dict:
+def load_forecast(path_file:str) -> dict[int,dict[str,dict[int,pd.DataFrame]]]:
+    """Charge le .json au chemin spécifié et reconstruit le dictionnaire récursivement avec la Dataframe. 
+
+    Args:
+        path_file (str): Chemin du fichier.
+
+    Returns:
+        dict: Dictionnaire conenant la DataFrame
+    """
+
     with open(path_file, mode="r") as f:
         loaded_data = json.load(f)
 
-    # Fonction pour reconstruire les pd.Series
-    def reconstruct_series(obj):
-        if isinstance(obj, dict):
-            if "columns" in obj and "index" in obj and "data" in obj:
-                # Reconstruction d'un DataFrame
-                return pd.DataFrame(data=obj["data"], index=pd.to_datetime(obj["index"]), columns=obj["columns"])
-            elif "index" in obj and "values" in obj:
-                # Reconstruction d'une Series
-                return pd.Series(data=obj["values"], index=pd.to_datetime(obj["index"]))
-            else:
-                # Récursivité pour les dictionnaires imbriqués
-                return {k: reconstruct_series(v) for k, v in obj.items()}
-        return obj  # Retour inchangé si ce n'est pas un dict
-    
-    return reconstruct_series(loaded_data)
+    def reconstruct_dict(obj):
 
+        if isinstance(obj, dict):
+            # Reconstruction d'un DataFrame
+            if "columns" in obj and "index" in obj and "data" in obj:                
+                df = pd.DataFrame(data=obj["data"], index=pd.to_datetime(obj["index"]), columns=obj["columns"])
+                df.rename(columns={[c for c in df.columns.to_list() if c.startswith("Forecast")][0] : "Forecast"}, inplace=True)
+                return df
+                
+            
+            # Reconstruction d'une Series
+            elif "index" in obj and "values" in obj:                
+                return pd.Series(data=obj["values"], index=pd.to_datetime(obj["index"]))
+            
+            else:
+                return {k: reconstruct_dict(v) for k, v in obj.items()} # Récursivité pour les dictionnaires imbriqués
+
+            
+        return obj  
+    
+    return reconstruct_dict(loaded_data)
 
 
 
 
 if __name__ == "__main__":
 
+    def explore_dict(d:dict, depth=0):
+        for key, value in d.items():
+            print("  " * depth + f"- {key}")  # Indentation pour la lisibilité
+            if isinstance(value, dict):  # Vérifie si c'est un sous-dictionnaire
+                explore_dict(value, depth + 1)
+            elif isinstance(value, pd.DataFrame):
+                print(value.columns)
+
+    def increment_keys(d):
+        if isinstance(d, dict):
+            new_dict = {}
+            for key, value in d.items():
+                try:
+                    key = int(key)
+                except:
+                    pass
+                new_key = key + 1 if isinstance(key, int) and isinstance(value, pd.DataFrame) else key
+                new_dict[new_key] = increment_keys(value)
+            return new_dict
+        else:
+            return d
+
+    
     def test_forecast():
+
 
         sizeMat_horizons = {
             10 : [1, 2],
@@ -456,19 +591,34 @@ if __name__ == "__main__":
             50 : [1, 3, 5]
         }
 
-        for horizons in sizeMat_horizons.values():
-            process_forecast(horizons=horizons, size_mat=list(sizeMat_horizons.keys()))
+        dir_data = r"Data\\Final Data - Copie"
+    
+        dir_output = r"Data\\Forecasting\\Covariance Based\\Single Forecast"
+        
+        process_forecast(size_mat_horizons=sizeMat_horizons,
+                         dir_data=dir_data,
+                         dir_output=dir_output)
 
     def test_load():
 
-        dir_forecast_path = r"Data\\Forecasting\\Covariance Based\\Single Forecast\\Daily"
+        dir_forecast_path = r"Data\\Forecasting\\Covariance Based\\Single Forecast\\Daily - Copie"
 
         files = [i for i in os.listdir(dir_forecast_path) if i.endswith(".json")]
 
         for file in files:
-            file_path = os.path.join(dir_forecast_path, file)
-            print(load_forecast(file_path))
+            print(file)
 
-    test_forecast()
+            file_path = os.path.join(dir_forecast_path, file)
+
+            dic = load_forecast(file_path)
+
+            # new_dict = increment_keys(dic)
+
+            # save_forecast(dico=new_dict, output_path=file_path)
+
+            explore_dict(dic)
+
+    # test_forecast()
+    test_load()
 
     pass
