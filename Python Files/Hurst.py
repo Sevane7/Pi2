@@ -48,14 +48,14 @@ class HurstDistribution(BloombergData):
     def fill_freq(self) -> None:
     
         if(self.timeframe == "Daily"):          
-            self.frequencies = ["1W", "2W","1M", "3M", "6M", "1Y", "3Y", "5Y"]
+            self.frequencies = ["2W","1M", "3M", "6M", "1Y", "3Y", "5Y"]
 
             self.freq_window = {
                 fq : self.convert_to_days(fq) for fq in self.frequencies
             }
         
         else:
-            self.frequencies = ["5min", "15min", "30min", "1h", "3h", "6h", "12h"] 
+            self.frequencies = ["15min", "30min", "1h", "3h", "6h", "12h"] 
 
             self.freq_window = {
                 fq : int(pd.Timedelta(fq).total_seconds() // 60) for fq in self.frequencies
@@ -236,75 +236,16 @@ def plot_distrib(dir_path : str, ticker : str, freq : list, timeframe : str, sta
     plt.show() 
 
 
-def Save_Hurst_Distrib():
-
-    timeframes = ["Daily", "1min"]
-      
-    for timeframe in timeframes:
-
-        for file in os.listdir(f"Data\\{timeframe}"):
+def apply_hurst(ticker, timeframe, min_drop = 362, daily_drop = 758) -> pd.DataFrame:
             
-            ticker = file.split(".xlsx")[0]
+    df = HurstDistribution(ticker=ticker, timeframe=timeframe).prepared_data
 
-            print(timeframe, ticker)
+    drop_lign = min_drop if timeframe == "1min" else daily_drop
 
-            output_file = f"Data\\Data Hurst - Original\\{ticker}.xlsx"
-            
-            df = HurstDistribution(ticker=ticker, timeframe=timeframe)      
+    df = df.iloc[drop_lign:]
 
-            mode = "a" if os.path.exists(output_file) else "w"
-
-            with pd.ExcelWriter(output_file, mode=mode, engine="openpyxl") as writer:
-
-                df.prepared_data.to_excel(writer, sheet_name=timeframe)
-
-
-def clean_distributions(min_drop = 362, daily_drop = 758):
-
-    original_dir_path = r"Data\\Data Hurst - Original"
-    output_dir_path = r"Data\\Data Hurst - Final"
-
-
-    for file in os.listdir(original_dir_path):
-
-        print(file.split(".xslx")[0], end="\n\t")
-
-        file_path = os.path.join(original_dir_path, file)
-        output_file_path = os.path.join(output_dir_path, file)
-
+    return df
     
-        sheets = ["1min", "Daily"]
-
-        dfs : dict[str, pd.DataFrame]= {}  
-
-        for sheet in sheets:
-
-            drop_col : str
-            drop_lign : int 
-
-            if sheet == "1min":
-                drop_col = "Hurst 5min"
-                drop_lign = min_drop
-            
-            else:
-                drop_col = "Hurst 1W"
-                drop_lign = daily_drop
-
-
-            df = pd.read_excel(file_path, sheet_name=sheet, index_col=0, engine="openpyxl")
-            df.drop(labels=[drop_col], axis=1, inplace=True)
-            dfs[sheet] = df.iloc[drop_lign:]
-
-
-        with pd.ExcelWriter(output_file_path, engine="openpyxl", mode="w") as writer:
-            
-            for sheet, df in dfs.items():
-
-                print(sheet, end="\n\t") if sheet == "1min" else print(sheet)
-
-                symbolize_market_info(df, 3, 5, 0.05)
-                
-                df.to_excel(writer, sheet_name=sheet)
 
 
 
@@ -312,15 +253,15 @@ if __name__ == "__main__":
 
     warnings.filterwarnings("ignore")
 
-    # Save_Hurst_Distrib()
-    clean_distributions()
-
     # daily_frequencies = ["2W", "1M", "3M", "6M", "1Y", "3Y", "5Y"]
     # minutes_frequencies = ["15min", "30min", "1h", "3h", "6h", "12h"]
 
-    # daily = "Daily"
-    # minutes = "1min"
-    # ticker = "BTC"
+    daily = "Daily"
+    minutes = "1min"
+    ticker = "BTC"
+
+    apply_hurst(ticker=ticker, timeframe=daily)
 
     # plot_distrib(dir_path, ticker, minutes_frequencies, minutes)
-
+    
+    pass

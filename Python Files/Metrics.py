@@ -65,12 +65,16 @@ def metrics_strategy(df : pd.DataFrame):
     df["Price"] = np.exp(df["Log Price"])
     df["Return"] = df["Price"].diff() / df["Price"]
     df["Log Return"] = df["Log Price"].diff()
+    df["Volatility"] = df["Log Return"].rolling(252).apply(calculate_vol, raw=True)
     df["Max Drawdown"] = df["Return"].rolling(252).apply(calculate_maxDrawdown, raw=True)
     df["Sharpe Ratio"] = df["Return"].rolling(252).apply(calculate_sharpe, raw=True)
     df["Sign Forecast"] = np.sign(df["Forecast"] - df["Log Price"])
-    df["Return Strategy"] = df["Sign Forecast"] * df["Return"]
+    df["Return Strategy"] = df["Sign Forecast"].shift() * df["Return"]
+    df["Volatility Strategy"] = df["Return Strategy"].rolling(252).apply(calculate_vol, raw=True)
     df["Max Drawdown Strategy"] = df["Return Strategy"].rolling(252).apply(calculate_maxDrawdown, raw=True)
     df["Sharpe Ratio Strategy"] = df["Return Strategy"].rolling(252).apply(calculate_sharpe, raw=True)
+
+    df = df.dropna()
 
 
 def plot_compare_metrics(df : pd.DataFrame, asset : str, name_metrics = "Log Price"):
@@ -85,7 +89,7 @@ def plot_compare_metrics(df : pd.DataFrame, asset : str, name_metrics = "Log Pri
         cumprod = calculate_Cummul_Return(df["Return"])
         cumprod_stragey = calculate_Cummul_Return(df["Return Strategy"])
         plt.plot(cumprod.index, cumprod, label=name_metrics, color="blue")
-        plt.plot(cumprod_stragey.index, cumprod_stragey, label=name_metrics + "Strategy", color="red")
+        plt.plot(cumprod_stragey.index, cumprod_stragey, label=name_metrics + " Strategy", color="red")
     
     else:
         plt.plot(df.index, df[name_metrics], label=name_metrics, color="blue")
@@ -124,11 +128,10 @@ if __name__ == "__main__":
 
     dir_accurate_files = r"Data\\Accurate Files - Copie"
 
-    for file in os.listdir(dir_accurate_files)[5:6]:
+    for file in os.listdir(dir_accurate_files)[3:4]:
         file_path = os.path.join(dir_accurate_files, file)
         df = pd.read_excel(file_path, index_col=0)
-        # plot_compare_metrics(df, file, "Log Price")
-        print(df["Sign Forecast"].value_counts())
+        plot_compare_metrics(df, file, "Volatility")
 
 
     # process_metrics_strategy(dir_accurate_files)

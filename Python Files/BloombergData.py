@@ -17,11 +17,7 @@ class BloombergData:
         self.ticker = ticker
         self.timeframe = timeframe
         
-        # self.dir_path = r"C:\Users\sevan\OneDrive - De Vinci\A4\Pi²\Systematic Strategy\Data"
-        self.path_file = os.path.join(os.getcwd(), f"Data\{self.timeframe}\{self.ticker}.xlsx")
-
-        # self.original_data = self.load_data()
-        # self.bounded_data = self.bound_data()
+        self.path_file = os.path.join(os.getcwd(), rf"Data\\Bloomberg Original Data\\{self.timeframe}\\{self.ticker}.xlsx")
 
 
     def load_data(self) -> pd.DataFrame:

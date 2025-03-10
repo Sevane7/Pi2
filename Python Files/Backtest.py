@@ -180,9 +180,7 @@ def process_backtest(dir_forecast : str) -> None:
             metrics.to_excel(xls, index=False)
                     
 
-def get_accurate_asset(file_path : str) -> pd.DataFrame:
-
-    df_metrics = pd.read_excel(file_path)
+def get_accurate_asset(df_metrics : pd.DataFrame) -> pd.DataFrame:
 
     accurate_assets : pd.DataFrame = None
 
