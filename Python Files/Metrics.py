@@ -3,6 +3,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
+def calculate_VaR(returns : pd.Series, alpha : float):
+    return - pd.Series(returns).quantile(1 - alpha)
+
 def calculate_vol(returns : pd.Series) :
     return returns.std() * np.sqrt(252)
 
@@ -65,12 +68,18 @@ def metrics_strategy(df : pd.DataFrame):
     df["Price"] = np.exp(df["Log Price"])
     df["Return"] = df["Price"].diff() / df["Price"]
     df["Log Return"] = df["Log Price"].diff()
+    df["VaR 95%"] = df["Return"].rolling(252).apply(lambda x : calculate_VaR(returns=x, alpha=0.05), raw=True)
+    df["VaR 99%"] = df["Return"].rolling(252).apply(lambda x : calculate_VaR(returns=x, alpha=0.01), raw=True)
     df["Volatility"] = df["Log Return"].rolling(252).apply(calculate_vol, raw=True)
+    df["P&L"] = calculate_Cummul_Return(df["Return"]) - 1
     df["Max Drawdown"] = df["Return"].rolling(252).apply(calculate_maxDrawdown, raw=True)
     df["Sharpe Ratio"] = df["Return"].rolling(252).apply(calculate_sharpe, raw=True)
     df["Sign Forecast"] = np.sign(df["Forecast"] - df["Log Price"])
     df["Return Strategy"] = df["Sign Forecast"].shift() * df["Return"]
+    df["VaR 95% Strategy"] = df["Return Strategy"].rolling(252).apply(lambda x : calculate_VaR(returns=x, alpha=0.05), raw=True)
+    df["VaR 99% Strategy"] = df["Return Strategy"].rolling(252).apply(lambda x : calculate_VaR(returns=x, alpha=0.01), raw=True)
     df["Volatility Strategy"] = df["Return Strategy"].rolling(252).apply(calculate_vol, raw=True)
+    df["P&L Strategy"] = calculate_Cummul_Return(df["Return Strategy"]) - 1
     df["Max Drawdown Strategy"] = df["Return Strategy"].rolling(252).apply(calculate_maxDrawdown, raw=True)
     df["Sharpe Ratio Strategy"] = df["Return Strategy"].rolling(252).apply(calculate_sharpe, raw=True)
 

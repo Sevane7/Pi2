@@ -81,6 +81,19 @@ class BloombergData:
     
         return f"{self.ticker} - {self.timeframe} - {start_format} To {end_format}"
 
-    def __len__(self):
-        return len(self.original_data)
+
+if __name__ == "__main__":
+    dir = r"Data\\Bloomberg Original Data\\1min"
+    for filename in os.listdir(dir):
+        if filename.endswith('.xlsx'):
+            print(filename)
+            # Charger le fichier Excel
+            file_path = os.path.join(dir, filename)
+            df = pd.read_excel(file_path, index_col=0)
+            
+            # Renommer la première colonne en "Log Price"
+            df.columns = [filename.split(".xlsx")[0]]  # Suppose qu'il n'y a qu'une seule colonne
+            
+            # Sauvegarder le fichier Excel en écrasant l'original
+            df.to_excel(file_path)
         

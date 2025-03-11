@@ -399,7 +399,7 @@ def single_forecast(df : pd.DataFrame,
     hurst_horizon : dict[str, dict] = {h_freq : None for h_freq in h_fq}
 
     for h in h_fq:
-        print(f"Hurts {h}")
+        print(f"Hurst {h}")
 
         horizon_df : dict[int, pd.DataFrame] = {horiz : None for horiz in horizons}
 

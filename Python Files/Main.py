@@ -4,10 +4,10 @@ import warnings
 from Hurst import apply_hurst
 from Forecasting import single_forecast, save_forecast, load_forecast
 from Backtest import BacktestStrategy
-from Metrics import metrics_strategy
+from Metrics import metrics_strategy, plot_compare_metrics
 
 
-def pipeline_from_data_to_metrics(timeframe : str, ticker : str, dir_path_data = "Data\\Backtest") -> None:
+def pipeline_from_data_to_metrics(timeframe : str, ticker : str, dir_path_data = "Data\\Backtest") -> pd.DataFrame:
 
     # Chemin du Dossier Data\TimeFrame contenant les data
     dir_tframe_path = os.path.join(dir_path_data, timeframe)
@@ -16,12 +16,8 @@ def pipeline_from_data_to_metrics(timeframe : str, ticker : str, dir_path_data =
     hurst_file = f"{ticker} Hurst.xlsx"
     forecast_file = f"{ticker} Forecast.json"
     json_file = f"{ticker}.json"
-    xls_file = f"{ticker}.xlsx"
     hurst_path = os.path.join(dir_tframe_path, hurst_file) 
 
-    if xls_file in os.listdir(dir_path_data):
-        print(f"{ticker} déjà exécuté.")
-        return None
 
     # Retourne la dataframe contenant les distribution de Hurst
     df : pd.DataFrame = None
@@ -63,8 +59,7 @@ def pipeline_from_data_to_metrics(timeframe : str, ticker : str, dir_path_data =
         path_forecast = os.path.join(dir_tframe_path, forecast_file)
 
         dic_forecast = load_forecast(path_forecast)
-        
-    
+           
     # Sinon appliquer le forecast
     else:
 
@@ -79,6 +74,7 @@ def pipeline_from_data_to_metrics(timeframe : str, ticker : str, dir_path_data =
         forecast_path = os.path.join(dir_tframe_path, forecast_file)
 
         save_forecast(forecast_path, dic_forecast)
+        dic_forecast = load_forecast(forecast_path)
 
     # Initialiser les variables avant le backtest
     best_size_mat, best_hurst, best_horizon = 0, "", 1
@@ -106,19 +102,38 @@ def pipeline_from_data_to_metrics(timeframe : str, ticker : str, dir_path_data =
                 except Exception as e:
                     print(e)
                     print(size_mat, h_fq, horizon)
-    
-    print(f"{ticker} Hit ratio max : {round(best_hit, 5)},\nHurt frequence {best_hurst},\nSize Matrix : {best_size_mat},\nHorizon : {best_horizon}")
+
 
     # Conserver les colonnes nécessaires
-    res = df.merge(best_forecast["Forecast"], left_index=True, right_index=True, how="inner")
+    res = df.merge(best_forecast["Forecast"].to_frame(), left_index=True, right_index=True, how="inner")
     hurst_cols = [c for c in df.columns if c.startswith("Hurst")]
     hurst_cols.remove(f"Hurst {best_hurst}")
     res.drop(columns=hurst_cols, inplace=True) 
 
     # Calculer les metrics
     metrics_strategy(res)
-
     res.to_excel(output_file, index=True)
+
+    # Ranger les metrics dans une dataframe que l'on retourne
+    backtest_frame = pd.DataFrame({
+        "Hit_ratio" : [round(best_hit, 5)],
+        "Hurt frequence" : [best_hurst],
+        "Size Matrix" : [best_size_mat],
+        "nHorizon" : [best_horizon],
+        "Sharpe B&H" : [res["Sharpe Ratio"].mean()],
+        "Sharpe Strategy" : [res["Sharpe Ratio Strategy"].mean()],
+        "MDD B&H" : [res["Max Drawdown"].min()],
+        "MDD Strategy" : [res["Max Drawdown Strategy"].min()],
+        "P&L B&H" : [res["P&L"].iloc[-1]],
+        "P&L  Strategy" : [res["P&L Strategy"].iloc[-1]],
+        "VaR 95% B&H" : [res["VaR 95%"].quantile(0.05)],
+        "VaR 99% B&H" : [res["VaR 99%"].quantile(0.05)],
+        "VaR 95% B&H Strategy" : [res["VaR 95% Strategy"].quantile(0.05)],
+        "VaR 99% B&H Strategy" : [res["VaR 99% Strategy"].quantile(0.05)],
+
+    }, index=[ticker])
+
+    return backtest_frame
     
 
 
@@ -126,10 +141,22 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore")
 
     
-    timeframe = "Daily"
-    ticker = "BNP"
-    output_file = rf"Data\\Backtest\\{timeframe}\\{ticker}.xlsx"
+    timeframe = "1min"
+    ticker = "TTE"
+    path_file = rf"Data\\Backtest\\{timeframe}\\{ticker}.xlsx"
 
-    pipeline_from_data_to_metrics(timeframe=timeframe, ticker=ticker)
+    df_metrics = pd.read_excel(path_file, index_col=0)
+
+    plot_compare_metrics(df_metrics, ticker, "Sharpe Ratio")
+
+    # df_metrics = pd.DataFrame(None)
+
+    # for files in os.listdir(rf"Data\\Bloomberg Original Data\\{timeframe}")[:18]:
+    #     ticker = files.split(".xlsx")[0]
+    #     print(ticker)
+    #     df = pipeline_from_data_to_metrics(timeframe=timeframe, ticker=ticker)
+    #     df_metrics = pd.concat([df_metrics, df])
+    
+    # df_metrics.to_excel(rf"Data\\Backtest\\{timeframe}\\metrics.xlsx", index=True)
 
     pass
